@@ -1,11 +1,17 @@
 package storage
 
 import (
-	"fmt"
+	"context"
 	"sort"
 	"sync"
 
 	"gestor-eventos-api/models"
+	"gestor-eventos-api/repositories"
+)
+
+var (
+	_ repositories.EventoRepository    = (*Store)(nil)
+	_ repositories.SolicitudRepository = (*Store)(nil)
 )
 
 // Store gestiona el almacenamiento en memoria protegido contra accesos concurrentes mediante RWMutex
@@ -16,13 +22,18 @@ type Store struct {
 	nextSolID   uint
 }
 
-// NewMemoryStore inicializa el almacenamiento con dos eventos iniciales de SHOWTECH SOLUTIONS
-func NewMemoryStore() *Store {
-	s := &Store{
+// NewEmptyMemoryStore inicializa un almacenamiento en memoria sin eventos ni solicitudes cargadas.
+func NewEmptyMemoryStore() *Store {
+	return &Store{
 		eventos:     make(map[uint]models.Evento),
 		solicitudes: make([]models.Solicitud, 0),
 		nextSolID:   1,
 	}
+}
+
+// NewMemoryStore inicializa el almacenamiento con dos eventos iniciales de SHOWTECH SOLUTIONS
+func NewMemoryStore() *Store {
+	s := NewEmptyMemoryStore()
 
 	// Dos eventos iniciales de demostración
 	s.eventos[1] = models.Evento{
@@ -49,7 +60,11 @@ func NewMemoryStore() *Store {
 }
 
 // ObtenerEventos devuelve la lista de eventos ordenados por ID de forma segura
-func (s *Store) ObtenerEventos() []models.Evento {
+func (s *Store) ObtenerEventos(ctx context.Context) ([]models.Evento, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -62,40 +77,42 @@ func (s *Store) ObtenerEventos() []models.Evento {
 		return lista[i].ID < lista[j].ID
 	})
 
-	return lista
+	return lista, nil
 }
 
 // ObtenerEventoPorID busca un evento por su ID
-func (s *Store) ObtenerEventoPorID(id uint) (models.Evento, bool) {
+func (s *Store) ObtenerEventoPorID(ctx context.Context, id uint) (models.Evento, error) {
+	if err := ctx.Err(); err != nil {
+		return models.Evento{}, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	evento, existe := s.eventos[id]
-	return evento, existe
-}
-
-// TieneSolicitudPendiente verifica si existe alguna solicitud pendiente para un evento dado
-func (s *Store) TieneSolicitudPendiente(eventoID uint) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, sol := range s.solicitudes {
-		if sol.EventoID == eventoID && sol.Estado == "Pendiente de revisión" {
-			return true
-		}
+	if !existe {
+		return models.Evento{}, repositories.ErrEventoNoEncontrado
 	}
-	return false
+	return evento, nil
 }
 
 // CrearSolicitud guarda una nueva solicitud asignando ID secuencial e impidiendo duplicados pendientes concurrentes
-func (s *Store) CrearSolicitud(sol models.Solicitud) (models.Solicitud, error) {
+func (s *Store) CrearSolicitud(ctx context.Context, sol models.Solicitud) (models.Solicitud, error) {
+	if err := ctx.Err(); err != nil {
+		return models.Solicitud{}, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if _, existe := s.eventos[sol.EventoID]; !existe {
+		return models.Solicitud{}, repositories.ErrEventoNoEncontrado
+	}
+
 	// Validación atómica bajo bloqueo de escritura
 	for _, existing := range s.solicitudes {
-		if existing.EventoID == sol.EventoID && existing.Estado == "Pendiente de revisión" {
-			return models.Solicitud{}, fmt.Errorf("ya existe una solicitud pendiente de revisión para el evento %d", sol.EventoID)
+		if existing.EventoID == sol.EventoID && existing.Estado == models.EstadoPendienteRevision {
+			return models.Solicitud{}, repositories.ErrSolicitudPendienteDuplicada
 		}
 	}
 
@@ -107,11 +124,15 @@ func (s *Store) CrearSolicitud(sol models.Solicitud) (models.Solicitud, error) {
 }
 
 // ObtenerSolicitudes devuelve una copia de todas las solicitudes registradas
-func (s *Store) ObtenerSolicitudes() []models.Solicitud {
+func (s *Store) ObtenerSolicitudes(ctx context.Context) ([]models.Solicitud, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	copia := make([]models.Solicitud, len(s.solicitudes))
 	copy(copia, s.solicitudes)
-	return copia
+	return copia, nil
 }

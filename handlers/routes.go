@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"gestor-eventos-api/storage"
+	"gestor-eventos-api/services"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRouter configura el enrutador de Gin, los proxies confiables y las rutas de la API
-func SetupRouter(store *storage.Store) *gin.Engine {
+func SetupRouter(eventoService *services.EventoService, solicitudService *services.SolicitudService) *gin.Engine {
 	r := gin.Default()
 
 	// Configuración de proxies para entorno local de desarrollo
@@ -30,10 +30,10 @@ func SetupRouter(store *storage.Store) *gin.Engine {
 
 	// Rutas de la API
 	r.GET("/health", HealthHandler)
-	r.GET("/eventos", ListarEventosHandler(store))
-	r.GET("/eventos/:id", DetalleEventoHandler(store))
-	r.POST("/solicitudes", CrearSolicitudHandler(store))
-	r.GET("/solicitudes", ListarSolicitudesHandler(store))
+	r.GET("/eventos", ListarEventosHandler(eventoService))
+	r.GET("/eventos/:id", DetalleEventoHandler(eventoService))
+	r.POST("/solicitudes", CrearSolicitudHandler(solicitudService))
+	r.GET("/solicitudes", ListarSolicitudesHandler(solicitudService))
 
 	return r
 }

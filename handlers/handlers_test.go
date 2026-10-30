@@ -2,14 +2,18 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"gestor-eventos-api/handlers"
 	"gestor-eventos-api/models"
+	"gestor-eventos-api/services"
 	"gestor-eventos-api/storage"
 
 	"github.com/gin-gonic/gin"
@@ -21,8 +25,46 @@ func init() {
 
 func setupTestRouter() (*gin.Engine, *storage.Store) {
 	store := storage.NewMemoryStore()
-	r := handlers.SetupRouter(store)
+	eventoService := services.NewEventoService(store)
+	solicitudService := services.NewSolicitudService(store, store)
+	r := handlers.SetupRouter(eventoService, solicitudService)
 	return r, store
+}
+
+type repoFalloHTTP struct {
+	errEventos        error
+	errEventoPorID    error
+	errSolicitudes    error
+	errCrearSolicitud error
+	base              *storage.Store
+}
+
+func (r *repoFalloHTTP) ObtenerEventos(ctx context.Context) ([]models.Evento, error) {
+	if r.errEventos != nil {
+		return nil, r.errEventos
+	}
+	return r.base.ObtenerEventos(ctx)
+}
+
+func (r *repoFalloHTTP) ObtenerEventoPorID(ctx context.Context, id uint) (models.Evento, error) {
+	if r.errEventoPorID != nil {
+		return models.Evento{}, r.errEventoPorID
+	}
+	return r.base.ObtenerEventoPorID(ctx, id)
+}
+
+func (r *repoFalloHTTP) ObtenerSolicitudes(ctx context.Context) ([]models.Solicitud, error) {
+	if r.errSolicitudes != nil {
+		return nil, r.errSolicitudes
+	}
+	return r.base.ObtenerSolicitudes(ctx)
+}
+
+func (r *repoFalloHTTP) CrearSolicitud(ctx context.Context, sol models.Solicitud) (models.Solicitud, error) {
+	if r.errCrearSolicitud != nil {
+		return models.Solicitud{}, r.errCrearSolicitud
+	}
+	return r.base.CrearSolicitud(ctx, sol)
 }
 
 // 1. Prueba de GET /health
@@ -67,7 +109,7 @@ func TestListarEventos(t *testing.T) {
 	}
 }
 
-// 3. Prueba de GET /eventos/:id (existente e inexistente)
+// 3. Prueba de GET /eventos/:id (existente, inexistente, inválido y cero)
 func TestDetalleEvento(t *testing.T) {
 	r, _ := setupTestRouter()
 
@@ -87,6 +129,17 @@ func TestDetalleEvento(t *testing.T) {
 
 	if wInex.Code != http.StatusNotFound {
 		t.Fatalf("se esperaba 404 para evento 999, se obtuvo %d", wInex.Code)
+	}
+
+	// Casos de ID inválido y cero (400 Bad Request)
+	for _, idInvalido := range []string{"0", "abc", "-5"} {
+		reqInv, _ := http.NewRequest(http.MethodGet, "/eventos/"+idInvalido, nil)
+		wInv := httptest.NewRecorder()
+		r.ServeHTTP(wInv, reqInv)
+
+		if wInv.Code != http.StatusBadRequest {
+			t.Errorf("para /eventos/%s se esperaba 400, se obtuvo %d", idInvalido, wInv.Code)
+		}
 	}
 }
 
@@ -134,10 +187,8 @@ func TestCrearSolicitudExito(t *testing.T) {
 	}
 }
 
-// 5. Pruebas de validación: horarios inválidos, fecha incorrecta, sin cambios, motivo vacío
+// 5. Pruebas de validación: horarios inválidos, formato estricto de horas, fecha incorrecta, sin cambios, motivo vacío y límite Unicode
 func TestCrearSolicitudValidaciones(t *testing.T) {
-	r, _ := setupTestRouter()
-
 	casos := []struct {
 		nombre       string
 		payload      map[string]interface{}
@@ -177,6 +228,72 @@ func TestCrearSolicitudValidaciones(t *testing.T) {
 			esperadoCode: http.StatusBadRequest,
 		},
 		{
+			nombre: "Hora en formato HH sin minutos (09)",
+			payload: map[string]interface{}{
+				"evento_id":             1,
+				"motivo":                "Hora incompleta",
+				"fecha_propuesta":       "2026-11-16",
+				"hora_inicio_propuesta": "09",
+				"hora_fin_propuesta":    "12:00",
+			},
+			esperadoCode: http.StatusBadRequest,
+		},
+		{
+			nombre: "Hora con un solo dígito (9:00)",
+			payload: map[string]interface{}{
+				"evento_id":             1,
+				"motivo":                "Hora sin cero inicial",
+				"fecha_propuesta":       "2026-11-16",
+				"hora_inicio_propuesta": "9:00",
+				"hora_fin_propuesta":    "12:00",
+			},
+			esperadoCode: http.StatusBadRequest,
+		},
+		{
+			nombre: "Minuto con un solo dígito (09:0)",
+			payload: map[string]interface{}{
+				"evento_id":             1,
+				"motivo":                "Minuto incompleto",
+				"fecha_propuesta":       "2026-11-16",
+				"hora_inicio_propuesta": "09:0",
+				"hora_fin_propuesta":    "12:00",
+			},
+			esperadoCode: http.StatusBadRequest,
+		},
+		{
+			nombre: "Hora con segundos (09:00:00)",
+			payload: map[string]interface{}{
+				"evento_id":             1,
+				"motivo":                "Formato con segundos",
+				"fecha_propuesta":       "2026-11-16",
+				"hora_inicio_propuesta": "09:00:00",
+				"hora_fin_propuesta":    "12:00",
+			},
+			esperadoCode: http.StatusBadRequest,
+		},
+		{
+			nombre: "Hora inexistente (25:00)",
+			payload: map[string]interface{}{
+				"evento_id":             1,
+				"motivo":                "Hora fuera de reloj",
+				"fecha_propuesta":       "2026-11-16",
+				"hora_inicio_propuesta": "09:00",
+				"hora_fin_propuesta":    "25:00",
+			},
+			esperadoCode: http.StatusBadRequest,
+		},
+		{
+			nombre: "Límites exactos válidos 06:00 y 22:00 y 09:05",
+			payload: map[string]interface{}{
+				"evento_id":             1,
+				"motivo":                "Dentro de límites exactos",
+				"fecha_propuesta":       "2026-11-16",
+				"hora_inicio_propuesta": "06:00",
+				"hora_fin_propuesta":    "22:00",
+			},
+			esperadoCode: http.StatusCreated,
+		},
+		{
 			nombre: "Fecha con formato inválido",
 			payload: map[string]interface{}{
 				"evento_id":             1,
@@ -199,10 +316,21 @@ func TestCrearSolicitudValidaciones(t *testing.T) {
 			esperadoCode: http.StatusBadRequest,
 		},
 		{
-			nombre: "Motivo superior a 400 caracteres",
+			nombre: "Motivo de exactamente 400 caracteres Unicode (válido)",
 			payload: map[string]interface{}{
 				"evento_id":             1,
-				"motivo":                strings.Repeat("A", 401),
+				"motivo":                strings.Repeat("ó", 400),
+				"fecha_propuesta":       "2026-11-16",
+				"hora_inicio_propuesta": "09:05",
+				"hora_fin_propuesta":    "12:00",
+			},
+			esperadoCode: http.StatusCreated,
+		},
+		{
+			nombre: "Motivo superior a 400 caracteres Unicode (401)",
+			payload: map[string]interface{}{
+				"evento_id":             1,
+				"motivo":                strings.Repeat("ó", 401),
 				"fecha_propuesta":       "2026-11-16",
 				"hora_inicio_propuesta": "09:00",
 				"hora_fin_propuesta":    "12:00",
@@ -224,6 +352,7 @@ func TestCrearSolicitudValidaciones(t *testing.T) {
 
 	for _, tc := range casos {
 		t.Run(tc.nombre, func(t *testing.T) {
+			r, _ := setupTestRouter()
 			body, _ := json.Marshal(tc.payload)
 			req, _ := http.NewRequest(http.MethodPost, "/solicitudes", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
@@ -305,10 +434,11 @@ func TestBloquearSegundaSolicitudPendiente(t *testing.T) {
 // 8. Prueba de conservación del evento original (no se altera al registrar solicitudes)
 func TestConservacionEventoOriginal(t *testing.T) {
 	r, store := setupTestRouter()
+	ctx := context.Background()
 
-	eventoOriginal, existe := store.ObtenerEventoPorID(1)
-	if !existe {
-		t.Fatalf("el evento 1 debe existir")
+	eventoOriginal, err := store.ObtenerEventoPorID(ctx, 1)
+	if err != nil {
+		t.Fatalf("el evento 1 debe existir: %v", err)
 	}
 
 	payload := map[string]interface{}{
@@ -329,7 +459,7 @@ func TestConservacionEventoOriginal(t *testing.T) {
 	}
 
 	// Consultar el evento original tras crear la solicitud
-	eventoDespues, _ := store.ObtenerEventoPorID(1)
+	eventoDespues, _ := store.ObtenerEventoPorID(ctx, 1)
 
 	if eventoDespues.Fecha != eventoOriginal.Fecha {
 		t.Errorf("la fecha original fue modificada! Antes: %s, Ahora: %s",
@@ -340,5 +470,165 @@ func TestConservacionEventoOriginal(t *testing.T) {
 	}
 	if eventoDespues.Estado != eventoOriginal.Estado {
 		t.Errorf("el estado del evento original fue alterado!")
+	}
+}
+
+// 9. Prueba de arrays vacíos en GET /solicitudes y GET /eventos
+func TestListasVaciasDevuelvenArrayJSON(t *testing.T) {
+	emptyStore := storage.NewEmptyMemoryStore()
+	r := handlers.SetupRouter(
+		services.NewEventoService(emptyStore),
+		services.NewSolicitudService(emptyStore, emptyStore),
+	)
+
+	for _, endpoint := range []string{"/eventos", "/solicitudes"} {
+		req, _ := http.NewRequest(http.MethodGet, endpoint, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("en %s se esperaba 200, se obtuvo %d", endpoint, w.Code)
+		}
+		if strings.TrimSpace(w.Body.String()) != "[]" {
+			t.Errorf("en %s se esperaba '[]', se obtuvo %q", endpoint, w.Body.String())
+		}
+	}
+}
+
+// 10. Prueba de fallo simulado del repositorio y respuesta 500 sin exponer detalles internos
+func TestFalloSimuladoRepositorioRespuesta500(t *testing.T) {
+	detalleSecreto := "error crítico sql: credenciales rechazadas en host interno"
+	errInterno := errors.New(detalleSecreto)
+
+	repoFallo := &repoFalloHTTP{
+		errEventos:        errInterno,
+		errEventoPorID:    errInterno,
+		errSolicitudes:    errInterno,
+		errCrearSolicitud: errInterno,
+		base:              storage.NewMemoryStore(),
+	}
+
+	r := handlers.SetupRouter(
+		services.NewEventoService(repoFallo),
+		services.NewSolicitudService(storage.NewMemoryStore(), repoFallo),
+	)
+
+	// GET /eventos -> 500
+	reqEv, _ := http.NewRequest(http.MethodGet, "/eventos", nil)
+	wEv := httptest.NewRecorder()
+	r.ServeHTTP(wEv, reqEv)
+	if wEv.Code != http.StatusInternalServerError {
+		t.Errorf("GET /eventos esperaba 500, obtuvo %d", wEv.Code)
+	}
+	if strings.Contains(wEv.Body.String(), detalleSecreto) {
+		t.Errorf("GET /eventos filtró detalles internos en la respuesta 500: %s", wEv.Body.String())
+	}
+
+	// GET /eventos/1 -> 500
+	reqDet, _ := http.NewRequest(http.MethodGet, "/eventos/1", nil)
+	wDet := httptest.NewRecorder()
+	r.ServeHTTP(wDet, reqDet)
+	if wDet.Code != http.StatusInternalServerError {
+		t.Errorf("GET /eventos/1 esperaba 500, obtuvo %d", wDet.Code)
+	}
+	if strings.Contains(wDet.Body.String(), detalleSecreto) {
+		t.Errorf("GET /eventos/1 filtró detalles internos en la respuesta 500: %s", wDet.Body.String())
+	}
+
+	// GET /solicitudes -> 500
+	reqSol, _ := http.NewRequest(http.MethodGet, "/solicitudes", nil)
+	wSol := httptest.NewRecorder()
+	r.ServeHTTP(wSol, reqSol)
+	if wSol.Code != http.StatusInternalServerError {
+		t.Errorf("GET /solicitudes esperaba 500, obtuvo %d", wSol.Code)
+	}
+	if strings.Contains(wSol.Body.String(), detalleSecreto) {
+		t.Errorf("GET /solicitudes filtró detalles internos en la respuesta 500: %s", wSol.Body.String())
+	}
+
+	// POST /solicitudes -> 500
+	payload := map[string]interface{}{
+		"evento_id":             1,
+		"motivo":                "Prueba fallo interno al guardar",
+		"fecha_propuesta":       "2026-11-28",
+		"hora_inicio_propuesta": "08:00",
+		"hora_fin_propuesta":    "11:00",
+	}
+	body, _ := json.Marshal(payload)
+	reqPost, _ := http.NewRequest(http.MethodPost, "/solicitudes", bytes.NewBuffer(body))
+	reqPost.Header.Set("Content-Type", "application/json")
+	wPost := httptest.NewRecorder()
+	r.ServeHTTP(wPost, reqPost)
+	if wPost.Code != http.StatusInternalServerError {
+		t.Errorf("POST /solicitudes esperaba 500, obtuvo %d", wPost.Code)
+	}
+	if strings.Contains(wPost.Body.String(), detalleSecreto) {
+		t.Errorf("POST /solicitudes filtró detalles internos en la respuesta 500: %s", wPost.Body.String())
+	}
+}
+
+// 11. Prueba de creaciones concurrentes vía HTTP para un mismo evento
+func TestCreacionConcurrenteHTTP(t *testing.T) {
+	r, store := setupTestRouter()
+
+	const totalPeticiones = 15
+	var wg sync.WaitGroup
+	wg.Add(totalPeticiones)
+
+	inicio := make(chan struct{})
+	codigos := make(chan int, totalPeticiones)
+
+	payload := map[string]interface{}{
+		"evento_id":             1,
+		"motivo":                "Solicitud concurrente vía HTTP",
+		"fecha_propuesta":       "2026-11-28",
+		"hora_inicio_propuesta": "09:00",
+		"hora_fin_propuesta":    "12:00",
+	}
+	bodyBytes, _ := json.Marshal(payload)
+
+	for i := 0; i < totalPeticiones; i++ {
+		go func() {
+			defer wg.Done()
+			<-inicio
+
+			req, _ := http.NewRequest(http.MethodPost, "/solicitudes", bytes.NewBuffer(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			codigos <- w.Code
+		}()
+	}
+
+	close(inicio)
+	wg.Wait()
+	close(codigos)
+
+	creadas := 0
+	conflictos := 0
+	for code := range codigos {
+		switch code {
+		case http.StatusCreated:
+			creadas++
+		case http.StatusConflict:
+			conflictos++
+		default:
+			t.Errorf("código HTTP inesperado en petición concurrente: %d", code)
+		}
+	}
+
+	if creadas != 1 {
+		t.Errorf("se esperaba exactamente 1 respuesta 201 Created, se obtuvieron %d", creadas)
+	}
+	if conflictos != totalPeticiones-1 {
+		t.Errorf("se esperaban %d respuestas 409 Conflict, se obtuvieron %d", totalPeticiones-1, conflictos)
+	}
+
+	solicitudes, err := store.ObtenerSolicitudes(context.Background())
+	if err != nil {
+		t.Fatalf("error obteniendo solicitudes almacenadas: %v", err)
+	}
+	if len(solicitudes) != 1 {
+		t.Errorf("se esperaba 1 única solicitud en memoria, se encontraron %d", len(solicitudes))
 	}
 }

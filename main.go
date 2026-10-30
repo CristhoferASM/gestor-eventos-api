@@ -7,15 +7,20 @@ import (
 	"net/http"
 
 	"gestor-eventos-api/handlers"
+	"gestor-eventos-api/services"
 	"gestor-eventos-api/storage"
 )
 
 func main() {
-	// Inicializar almacenamiento en memoria con datos de prueba
+	// Inicializar almacenamiento en memoria con datos de prueba (implementa los repositorios)
 	store := storage.NewMemoryStore()
 
-	// Configurar enrutador Gin y endpoints
-	r := handlers.SetupRouter(store)
+	// Ensamblar servicios inyectando las interfaces de repositorio
+	eventoService := services.NewEventoService(store)
+	solicitudService := services.NewSolicitudService(store, store)
+
+	// Configurar enrutador Gin y endpoints recibiendo únicamente servicios
+	r := handlers.SetupRouter(eventoService, solicitudService)
 
 	direccion := "127.0.0.1:8081"
 	fmt.Println("=============================================================")
