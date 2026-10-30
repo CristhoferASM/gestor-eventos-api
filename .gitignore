@@ -1,0 +1,16 @@
+# Configuración privada
+.env
+.env.*
+!.env.example
+
+# Compilados y archivos temporales
+*.exe
+*.test
+*.out
+/bin/
+/dist/
+/tmp/
+
+# Configuración del editor
+.idea/
+.vscode/
