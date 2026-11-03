@@ -38,6 +38,15 @@ gestor-eventos-api/
 │   ├── solicitudes.go            # Handlers HTTP para POST /solicitudes y GET /solicitudes
 │   └── handlers_test.go          # Pruebas de integración HTTP sobre los endpoints
 │
+├── frontend/                     # Aplicación web Angular (standalone + SCSS)
+│   ├── proxy.conf.json           # Proxy de desarrollo (/api -> http://127.0.0.1:8081)
+│   ├── package.json              # Scripts y dependencias de Angular
+│   └── src/app/
+│       ├── models/               # Interfaces TypeScript alineadas con el JSON del backend
+│       ├── services/             # Servicio HTTP tipado (EventosApiService) y pruebas
+│       ├── validators/           # Validadores de formulario reactivo (HH:mm, rango, Unicode)
+│       └── components/           # Componentes de listado de eventos, formulario y solicitudes
+│
 └── README.md                     # Documentación técnica del proyecto
 ```
 
@@ -144,11 +153,28 @@ go run main.go
 
 Para detener el servidor, presiona `Ctrl + C` en la terminal.
 
-### B. Ejecutar verificaciones y pruebas automatizadas
+### B. Ejecutar verificaciones y pruebas automatizadas del backend
 
 ```powershell
 & "C:\Program Files\Go\bin\go.exe" vet ./...
 & "C:\Program Files\Go\bin\go.exe" test -count=1 ./...
+```
+
+### C. Iniciar y verificar el frontend Angular (`http://localhost:4200`)
+
+En otra terminal PowerShell dentro de la subcarpeta `frontend/` (con el backend Go ejecutándose en `127.0.0.1:8081`):
+
+```powershell
+cd frontend
+
+# Iniciar servidor de desarrollo en http://localhost:4200 con proxy /api -> http://127.0.0.1:8081
+npm start
+
+# Compilar para producción
+npm run build
+
+# Ejecutar pruebas unitarias de Angular sin modo watch
+npx ng test --watch=false
 ```
 
 ---

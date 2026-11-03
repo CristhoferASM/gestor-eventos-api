@@ -1,0 +1,69 @@
+<div class="layout-principal">
+  <header class="cabecera-showtech">
+    <div class="contenedor cabecera-showtech__contenido">
+      <div class="marca-bloque">
+        <div class="marca-insignia" aria-hidden="true">
+          <svg viewBox="0 0 24 24" class="icono-marca">
+            <path
+              d="M12 2L2 7l10 5 10-5-10-5zm0 7.5l-6-3 6-3 6 3-6 3zm0 2.5l-10-5v10l10 5 10-5V7l-10 5z"
+              fill="currentColor"
+            />
+          </svg>
+        </div>
+        <div>
+          <span class="marca-empresa">SHOWTECH SOLUTIONS</span>
+          <h1 class="titulo-pagina">Solicitudes de modificación</h1>
+        </div>
+      </div>
+      <p class="descripcion-cabecera">
+        Consulta la programación actual de eventos y registra solicitudes de cambio de fecha u
+        horario.
+      </p>
+    </div>
+  </header>
+
+  <main class="contenedor contenido-principal">
+    <div class="rejilla-superior">
+      <app-eventos-lista
+        [eventos]="eventos()"
+        [eventoSeleccionadoId]="eventoSeleccionado()?.id ?? null"
+        [eventosConPendienteIds]="eventosConPendienteIds()"
+        [cargando]="cargandoEventos()"
+        [errorCarga]="errorEventos()"
+        (seleccionarEvento)="alSeleccionarEvento($event)"
+        (reintentar)="cargarEventos()"
+      />
+
+      <app-solicitud-formulario
+        [eventoSeleccionado]="eventoSeleccionado()"
+        [tienePendiente]="eventoSeleccionadoTienePendiente()"
+        [enviando]="enviandoSolicitud()"
+        [mensajeExito]="mensajeExito()"
+        [avisoRefrescoPosterior]="avisoRefrescoPosterior()"
+        [errorEnvio]="errorEnvio()"
+        (enviarSolicitud)="alEnviarSolicitud($event)"
+        (recargarSolicitudes)="cargarSolicitudes()"
+      />
+    </div>
+
+    <div class="seccion-inferior">
+      <app-solicitudes-lista
+        [solicitudes]="solicitudes()"
+        [eventos]="eventos()"
+        [cargando]="cargandoSolicitudes()"
+        [errorCarga]="errorSolicitudes()"
+        (reintentar)="cargarSolicitudes()"
+      />
+    </div>
+  </main>
+
+  <footer class="pie-pagina">
+    <div class="contenedor pie-pagina__contenido">
+      <span>SHOWTECH SOLUTIONS — Gestor de Eventos</span>
+      <span class="nota-memoria">
+        Nota técnica: el backend opera actualmente con almacenamiento en memoria; las solicitudes
+        registradas se reinician al detener el servidor.
+      </span>
+    </div>
+  </footer>
+</div>
