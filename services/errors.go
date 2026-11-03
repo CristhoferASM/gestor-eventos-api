@@ -33,4 +33,3 @@ func (e *ErrorValidacion) Unwrap() error {
 func nuevoErrorValidacion(mensaje string) error {
 	return &ErrorValidacion{Mensaje: mensaje}
 }
-

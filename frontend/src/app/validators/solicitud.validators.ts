@@ -3,6 +3,7 @@ import { Evento } from '../models/gestor-eventos.models';
 
 const FECHA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const HORA_REGEX = /^\d{2}:\d{2}$/;
+const CORREO_BASICO_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MINUTOS_MIN = 6 * 60;  // 06:00
 const MINUTOS_MAX = 22 * 60; // 22:00
 
@@ -10,11 +11,50 @@ const MINUTOS_MAX = 22 * 60; // 22:00
  * Cuenta los puntos de código Unicode tras recortar espacios externos,
  * de forma coherente con utf8.RuneCountInString(strings.TrimSpace(s)) en Go.
  */
-export function contarRunasMotivo(valor: string | null | undefined): number {
+export function contarRunasUnicode(valor: string | null | undefined): number {
   if (!valor) {
     return 0;
   }
   return Array.from(valor.trim()).length;
+}
+
+export const contarRunasMotivo = contarRunasUnicode;
+
+/**
+ * Comprueba que un correo electrónico no vacío tenga un formato sintáctico válido,
+ * con la misma regla determinista que esCorreoValido en el backend Go.
+ */
+export function esCorreoFormatoValido(correoRaw: string | null | undefined): boolean {
+  const correo = (correoRaw ?? '').trim();
+  if (!correo) {
+    return true;
+  }
+  if (!CORREO_BASICO_REGEX.test(correo) || correo.includes('..')) {
+    return false;
+  }
+  const partes = correo.split('@');
+  if (partes.length !== 2) {
+    return false;
+  }
+  const [local, dominio] = partes;
+  if (
+    local.startsWith('.') ||
+    local.endsWith('.') ||
+    dominio.startsWith('.') ||
+    dominio.endsWith('.')
+  ) {
+    return false;
+  }
+  const etiquetas = dominio.split('.');
+  if (etiquetas.length < 2) {
+    return false;
+  }
+  for (const et of etiquetas) {
+    if (!et || et.startsWith('-') || et.endsWith('-')) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -78,14 +118,17 @@ export function fechaFormatoValidoValidator(): ValidatorFn {
 }
 
 /**
- * Valida que el motivo no quede vacío tras quitar espacios y no supere el máximo de caracteres Unicode.
+ * Valida un campo de texto obligatorio tras recortar espacios y verifica su límite de puntos de código Unicode.
  */
-export function motivoUnicodeValidator(maxRunas = 400): ValidatorFn {
+export function textoObligatorioUnicodeValidator(
+  maxRunas: number,
+  claveErrorVacio = 'textoVacio'
+): ValidatorFn {
   return (control: AbstractControl): ValidationErrors | null => {
     const raw = (control.value ?? '').toString();
     const limpio = raw.trim();
     if (limpio.length === 0) {
-      return { motivoVacio: true };
+      return { [claveErrorVacio]: true };
     }
     const totalRunas = Array.from(limpio).length;
     if (totalRunas > maxRunas) {
@@ -95,6 +138,63 @@ export function motivoUnicodeValidator(maxRunas = 400): ValidatorFn {
           actual: totalRunas,
         },
       };
+    }
+    return null;
+  };
+}
+
+/**
+ * Valida que el motivo no quede vacío tras quitar espacios y no supere el máximo de caracteres Unicode.
+ */
+export function motivoUnicodeValidator(maxRunas = 400): ValidatorFn {
+  return textoObligatorioUnicodeValidator(maxRunas, 'motivoVacio');
+}
+
+/**
+ * Valida un campo de texto opcional tras recortar espacios, comprobando únicamente su límite Unicode.
+ */
+export function textoOpcionalUnicodeValidator(maxRunas: number): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const raw = (control.value ?? '').toString();
+    const limpio = raw.trim();
+    if (limpio.length === 0) {
+      return null;
+    }
+    const totalRunas = Array.from(limpio).length;
+    if (totalRunas > maxRunas) {
+      return {
+        maximoUnicode: {
+          max: maxRunas,
+          actual: totalRunas,
+        },
+      };
+    }
+    return null;
+  };
+}
+
+/**
+ * Valida un correo electrónico opcional: permite cadena vacía tras trim, verifica máximo Unicode (80)
+ * y formato válido cuando tiene contenido.
+ */
+export function correoOpcionalValidator(maxRunas = 80): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const raw = (control.value ?? '').toString();
+    const limpio = raw.trim();
+    if (limpio.length === 0) {
+      return null;
+    }
+    const totalRunas = Array.from(limpio).length;
+    if (totalRunas > maxRunas) {
+      return {
+        maximoUnicode: {
+          max: maxRunas,
+          actual: totalRunas,
+        },
+      };
+    }
+    if (!esCorreoFormatoValido(limpio)) {
+      return { formatoCorreo: true };
     }
     return null;
   };
@@ -123,13 +223,36 @@ export function horaFormatoYRangoValidator(): ValidatorFn {
 /**
  * Validador de grupo para comprobar:
  * 1) Que la hora de inicio sea estrictamente anterior a la hora de fin.
- * 2) Que exista al menos un cambio en fecha u horario respecto al evento original seleccionado.
+ * 2) Coherencia temporal y no cruce de franjas técnicas (montaje, desmontaje, ensayo).
+ * 3) Que exista al menos un cambio efectivo entre todos los campos admitidos
+ *    (nombre, contacto, teléfono, correo, observaciones, fecha, horario o tiempos técnicos) respecto al evento original.
  */
 export function solicitudGrupoValidator(obtenerEventoActual: () => Evento | null): ValidatorFn {
   return (group: AbstractControl): ValidationErrors | null => {
     const fecha = (group.get('fecha_propuesta')?.value ?? '').toString().trim();
     const horaInicio = (group.get('hora_inicio_propuesta')?.value ?? '').toString().trim();
     const horaFin = (group.get('hora_fin_propuesta')?.value ?? '').toString().trim();
+
+    const nombre = (group.get('nombre_propuesto')?.value ?? '').toString().trim();
+    const contacto = (group.get('contacto_propuesto')?.value ?? '').toString().trim();
+    const telefono = (group.get('telefono_propuesto')?.value ?? '').toString().trim();
+    const correo = (group.get('correo_propuesto')?.value ?? '').toString().trim();
+    const observaciones = (group.get('observaciones_propuestas')?.value ?? '').toString().trim();
+
+    const hasMontaje = Boolean(group.get('has_montaje')?.value);
+    const montajeFecha = (group.get('montaje_fecha')?.value ?? '').toString().trim();
+    const montajeStart = (group.get('montaje_hora_inicio')?.value ?? '').toString().trim();
+    const montajeEnd = (group.get('montaje_hora_fin')?.value ?? '').toString().trim();
+
+    const hasDesmontaje = Boolean(group.get('has_desmontaje')?.value);
+    const desmontajeFecha = (group.get('desmontaje_fecha')?.value ?? '').toString().trim();
+    const desmontajeStart = (group.get('desmontaje_hora_inicio')?.value ?? '').toString().trim();
+    const desmontajeEnd = (group.get('desmontaje_hora_fin')?.value ?? '').toString().trim();
+
+    const hasEnsayo = Boolean(group.get('has_ensayo')?.value);
+    const ensayoFecha = (group.get('ensayo_fecha')?.value ?? '').toString().trim();
+    const ensayoStart = (group.get('ensayo_hora_inicio')?.value ?? '').toString().trim();
+    const ensayoEnd = (group.get('ensayo_hora_fin')?.value ?? '').toString().trim();
 
     const errores: ValidationErrors = {};
 
@@ -140,20 +263,116 @@ export function solicitudGrupoValidator(obtenerEventoActual: () => Evento | null
       errores['inicioPosteriorOIgualAFin'] = true;
     }
 
+    let minMStart: number | null = null;
+    let minMEnd: number | null = null;
+    if (hasMontaje) {
+      minMStart = parsearHoraAMinutos(montajeStart);
+      minMEnd = parsearHoraAMinutos(montajeEnd);
+      if (minMStart !== null && minMEnd !== null) {
+        if (minMStart >= minMEnd) {
+          errores['montajeInicioPosteriorOIgualAFin'] = true;
+        }
+        if (montajeFecha === fecha && minInicio !== null && minMEnd > minInicio) {
+          errores['montajeFinalizaDespuesDeInicio'] = true;
+        }
+      }
+    }
+
+    if (hasDesmontaje) {
+      const minDStart = parsearHoraAMinutos(desmontajeStart);
+      const minDEnd = parsearHoraAMinutos(desmontajeEnd);
+      if (minDStart !== null && minDEnd !== null) {
+        if (minDStart >= minDEnd) {
+          errores['desmontajeInicioPosteriorOIgualAFin'] = true;
+        }
+        if (desmontajeFecha === fecha && minFin !== null && minDStart < minFin) {
+          errores['desmontajeIniciaAntesDeFin'] = true;
+        }
+      }
+    }
+
+    if (hasEnsayo) {
+      const minEStart = parsearHoraAMinutos(ensayoStart);
+      const minEEnd = parsearHoraAMinutos(ensayoEnd);
+      if (minEStart !== null && minEEnd !== null) {
+        if (minEStart >= minEEnd) {
+          errores['ensayoInicioPosteriorOIgualAFin'] = true;
+        }
+        if (ensayoFecha === fecha && minInicio !== null && minEEnd > minInicio) {
+          errores['ensayoFinalizaDespuesDeInicio'] = true;
+        }
+        if (hasMontaje && minMStart !== null && minMEnd !== null && ensayoFecha === fecha && montajeFecha === fecha) {
+          if (!(minEEnd <= minMStart || minEStart >= minMEnd)) {
+            errores['ensayoCruzaConMontaje'] = true;
+          }
+        }
+      }
+    }
+
     const evento = obtenerEventoActual();
-    if (
-      evento &&
-      fecha &&
-      minInicio !== null &&
-      minFin !== null &&
-      fecha === evento.fecha &&
-      horaInicio === evento.hora_inicio &&
-      horaFin === evento.hora_fin
-    ) {
-      errores['sinCambiosRespectoAlOriginal'] = true;
+    if (evento && fecha && minInicio !== null && minFin !== null) {
+      const origNombre = (evento.nombre ?? '').trim();
+      const origContacto = (evento.contacto ?? '').trim();
+      const origTelefono = (evento.telefono ?? '').trim();
+      const origCorreo = (evento.correo ?? '').trim();
+      const origObservaciones = (evento.observaciones ?? '').trim();
+
+      const sinCambioHorario =
+        fecha === evento.fecha &&
+        horaInicio === evento.hora_inicio &&
+        horaFin === evento.hora_fin;
+
+      const sinCambioInfoGeneral =
+        nombre === origNombre &&
+        contacto === origContacto &&
+        telefono === origTelefono &&
+        correo === origCorreo &&
+        observaciones === origObservaciones;
+
+      const origHasMontaje = Boolean(evento.has_montaje);
+      const origMontFecha = (evento.montaje_fecha ?? '').trim();
+      const origMontStart = (evento.montaje_hora_inicio ?? '').trim();
+      const origMontEnd = (evento.montaje_hora_fin ?? '').trim();
+
+      const sinCambioMontaje =
+        hasMontaje === origHasMontaje &&
+        (!hasMontaje || (
+          montajeFecha === origMontFecha &&
+          montajeStart === origMontStart &&
+          montajeEnd === origMontEnd
+        ));
+
+      const origHasDesmontaje = Boolean(evento.has_desmontaje);
+      const origDesmFecha = (evento.desmontaje_fecha ?? '').trim();
+      const origDesmStart = (evento.desmontaje_hora_inicio ?? '').trim();
+      const origDesmEnd = (evento.desmontaje_hora_fin ?? '').trim();
+
+      const sinCambioDesmontaje =
+        hasDesmontaje === origHasDesmontaje &&
+        (!hasDesmontaje || (
+          desmontajeFecha === origDesmFecha &&
+          desmontajeStart === origDesmStart &&
+          desmontajeEnd === origDesmEnd
+        ));
+
+      const origHasEnsayo = Boolean(evento.has_ensayo);
+      const origEnsFecha = (evento.ensayo_fecha ?? '').trim();
+      const origEnsStart = (evento.ensayo_hora_inicio ?? '').trim();
+      const origEnsEnd = (evento.ensayo_hora_fin ?? '').trim();
+
+      const sinCambioEnsayo =
+        hasEnsayo === origHasEnsayo &&
+        (!hasEnsayo || (
+          ensayoFecha === origEnsFecha &&
+          ensayoStart === origEnsStart &&
+          ensayoEnd === origEnsEnd
+        ));
+
+      if (sinCambioHorario && sinCambioInfoGeneral && sinCambioMontaje && sinCambioDesmontaje && sinCambioEnsayo) {
+        errores['sinCambiosRespectoAlOriginal'] = true;
+      }
     }
 
     return Object.keys(errores).length > 0 ? errores : null;
   };
 }
-

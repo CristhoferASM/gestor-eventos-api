@@ -631,4 +631,173 @@ func TestCreacionConcurrenteHTTP(t *testing.T) {
 	if len(solicitudes) != 1 {
 		t.Errorf("se esperaba 1 única solicitud en memoria, se encontraron %d", len(solicitudes))
 	}
+} // 12. Prueba de integración real entre handlers, servicios y almacenamiento
+// Verifica: envío con cambios de contacto, teléfono, correo y horario, validación en respuesta POST,
+// consulta posterior vía GET /solicitudes con los mismos valores, e integridad del evento original.
+func TestCrearYListarSolicitudConInformacionGeneralHTTP(t *testing.T) {
+	r, store := setupTestRouter()
+	ctx := context.Background()
+	ev1, _ := store.ObtenerEventoPorID(ctx, 1)
+
+	// 1) Enviar propuesta con cambios de contacto, teléfono, correo y horario
+	payload := map[string]interface{}{
+		"evento_id":             1,
+		"motivo":                "Cambio integral de contacto y extensión de horario",
+		"fecha_propuesta":       ev1.Fecha,
+		"hora_inicio_propuesta": "10:00",
+		"hora_fin_propuesta":    "14:00",
+		"informacion_general_propuesta": map[string]interface{}{
+			"nombre":        ev1.Nombre,
+			"contacto":      "Cristhofer",
+			"telefono":      "999000993",
+			"correo":        "prueba@gmail.com",
+			"observaciones": "Requerimientos audiovisuales adicionales",
+		},
+	}
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequest(http.MethodPost, "/solicitudes", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("se esperaba 201 Created, se obtuvo %d: %s", w.Code, w.Body.String())
+	}
+
+	// 2) Comprobar esos valores directamente en la respuesta del POST
+	var respPost struct {
+		Mensaje   string           `json:"mensaje"`
+		Solicitud models.Solicitud `json:"solicitud"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &respPost); err != nil {
+		t.Fatalf("error deserializando respuesta del POST: %v", err)
+	}
+	postSol := respPost.Solicitud
+	if postSol.DatosPropuestos.Contacto != "Cristhofer" {
+		t.Errorf("POST: contacto propuesto esperado 'Cristhofer', obtenido %q", postSol.DatosPropuestos.Contacto)
+	}
+	if postSol.DatosPropuestos.Telefono != "999000993" {
+		t.Errorf("POST: teléfono propuesto esperado '999000993', obtenido %q", postSol.DatosPropuestos.Telefono)
+	}
+	if postSol.DatosPropuestos.Correo != "prueba@gmail.com" {
+		t.Errorf("POST: correo propuesto esperado 'prueba@gmail.com', obtenido %q", postSol.DatosPropuestos.Correo)
+	}
+	if postSol.DatosPropuestos.HoraInicio != "10:00" || postSol.DatosPropuestos.HoraFin != "14:00" {
+		t.Errorf("POST: horario propuesto esperado 10:00-14:00, obtenido %s-%s", postSol.DatosPropuestos.HoraInicio, postSol.DatosPropuestos.HoraFin)
+	}
+	if postSol.DatosOriginales.Nombre != ev1.Nombre || postSol.DatosOriginales.Contacto != ev1.Contacto {
+		t.Errorf("POST: datos originales en snapshot no coinciden con evento 1: %+v", postSol.DatosOriginales)
+	}
+
+	// 3) Consultar GET /solicitudes y comprobar que conserva exactamente los mismos valores
+	reqGet, _ := http.NewRequest(http.MethodGet, "/solicitudes", nil)
+	wGet := httptest.NewRecorder()
+	r.ServeHTTP(wGet, reqGet)
+
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("se esperaba 200 OK en GET /solicitudes, se obtuvo %d", wGet.Code)
+	}
+
+	var lista []models.Solicitud
+	if err := json.Unmarshal(wGet.Body.Bytes(), &lista); err != nil {
+		t.Fatalf("error deserializando GET /solicitudes: %v", err)
+	}
+	if len(lista) != 1 {
+		t.Fatalf("se esperaba 1 solicitud en el listado, se obtuvieron %d", len(lista))
+	}
+
+	getSol := lista[0]
+	if getSol.DatosPropuestos.Contacto != "Cristhofer" || getSol.DatosPropuestos.Telefono != "999000993" || getSol.DatosPropuestos.Correo != "prueba@gmail.com" {
+		t.Errorf("GET: datos propuestos no coinciden con los registrados: %+v", getSol.DatosPropuestos)
+	}
+	if getSol.DatosPropuestos.HoraInicio != "10:00" || getSol.DatosPropuestos.HoraFin != "14:00" {
+		t.Errorf("GET: horario propuesto no coincide: %s-%s", getSol.DatosPropuestos.HoraInicio, getSol.DatosPropuestos.HoraFin)
+	}
+	if getSol.DatosOriginales.Nombre != ev1.Nombre || getSol.DatosOriginales.Contacto != ev1.Contacto {
+		t.Errorf("GET: snapshot original no coincide: %+v", getSol.DatosOriginales)
+	}
+
+	// 4) Verificar que el evento original sigue intacto
+	evDespues, _ := store.ObtenerEventoPorID(ctx, 1)
+	if evDespues != ev1 {
+		t.Errorf("el evento 1 fue modificado tras registrar solicitud: %+v vs %+v", evDespues, ev1)
+	}
+}
+
+// 12. Prueba de integración de tiempos técnicos (montaje, desmontaje y ensayo) end-to-end
+func TestCrearYListarSolicitudConTiemposTecnicosHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, store := setupTestRouter()
+	ctx := context.Background()
+
+	ev1, err := store.ObtenerEventoPorID(ctx, 1)
+	if err != nil {
+		t.Fatalf("error obteniendo evento 1: %v", err)
+	}
+
+	payload := map[string]interface{}{
+		"evento_id":             1,
+		"motivo":                "Añadir ensayo previo y extender montaje técnico",
+		"fecha_propuesta":       ev1.Fecha,
+		"hora_inicio_propuesta": "09:00",
+		"hora_fin_propuesta":    "13:00",
+		"tiempos_tecnicos_propuestos": map[string]interface{}{
+			"has_ensayo":             true,
+			"ensayo_fecha":           ev1.Fecha,
+			"ensayo_hora_inicio":     "06:30",
+			"ensayo_hora_fin":        "07:30",
+			"has_montaje":            true,
+			"montaje_fecha":          ev1.Fecha,
+			"montaje_hora_inicio":    "07:30",
+			"montaje_hora_fin":       "09:00",
+			"has_desmontaje":         true,
+			"desmontaje_fecha":       ev1.Fecha,
+			"desmontaje_hora_inicio": "13:00",
+			"desmontaje_hora_fin":    "14:00",
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequest(http.MethodPost, "/solicitudes", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("POST /solicitudes esperaba 201, obtuvo %d: %s", w.Code, w.Body.String())
+	}
+
+	// Consultar GET /solicitudes y verificar snapshots completos
+	reqGet, _ := http.NewRequest(http.MethodGet, "/solicitudes", nil)
+	wGet := httptest.NewRecorder()
+	r.ServeHTTP(wGet, reqGet)
+
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("GET /solicitudes esperaba 200, obtuvo %d", wGet.Code)
+	}
+
+	var lista []models.Solicitud
+	if err := json.Unmarshal(wGet.Body.Bytes(), &lista); err != nil {
+		t.Fatalf("error parseando JSON: %v", err)
+	}
+	if len(lista) != 1 {
+		t.Fatalf("se esperaba 1 solicitud, se obtuvieron %d", len(lista))
+	}
+
+	sol := lista[0]
+	// Verificar snapshot original
+	if !sol.DatosOriginales.HasMontaje || sol.DatosOriginales.MontajeHoraInicio != "08:00" {
+		t.Errorf("snapshot original de montaje incorrecto: %+v", sol.DatosOriginales)
+	}
+	if sol.DatosOriginales.HasEnsayo {
+		t.Errorf("snapshot original no debería tener ensayo: %+v", sol.DatosOriginales)
+	}
+
+	// Verificar snapshot propuesto
+	if !sol.DatosPropuestos.HasEnsayo || sol.DatosPropuestos.EnsayoHoraInicio != "06:30" || sol.DatosPropuestos.EnsayoHoraFin != "07:30" {
+		t.Errorf("snapshot propuesto de ensayo incorrecto: %+v", sol.DatosPropuestos)
+	}
+	if !sol.DatosPropuestos.HasMontaje || sol.DatosPropuestos.MontajeHoraInicio != "07:30" || sol.DatosPropuestos.MontajeHoraFin != "09:00" {
+		t.Errorf("snapshot propuesto de montaje incorrecto: %+v", sol.DatosPropuestos)
+	}
 }

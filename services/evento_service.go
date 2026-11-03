@@ -38,4 +38,3 @@ func (s *EventoService) ObtenerEventoPorID(ctx context.Context, id uint) (models
 	}
 	return s.eventoRepo.ObtenerEventoPorID(ctx, id)
 }
-

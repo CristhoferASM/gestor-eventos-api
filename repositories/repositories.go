@@ -26,4 +26,3 @@ type SolicitudRepository interface {
 	ObtenerSolicitudes(ctx context.Context) ([]models.Solicitud, error)
 	CrearSolicitud(ctx context.Context, sol models.Solicitud) (models.Solicitud, error)
 }
-

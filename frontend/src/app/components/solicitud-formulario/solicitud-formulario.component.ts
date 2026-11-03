@@ -2,11 +2,14 @@ import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Evento, SolicitudCreacionPayload } from '../../models/gestor-eventos.models';
 import {
-  contarRunasMotivo,
+  contarRunasUnicode,
+  correoOpcionalValidator,
   fechaFormatoValidoValidator,
   horaFormatoYRangoValidator,
   motivoUnicodeValidator,
   solicitudGrupoValidator,
+  textoObligatorioUnicodeValidator,
+  textoOpcionalUnicodeValidator,
 } from '../../validators/solicitud.validators';
 
 @Component({
@@ -14,261 +17,887 @@ import {
   standalone: true,
   imports: [ReactiveFormsModule],
   template: `
-    <section class="panel-seccion" aria-labelledby="titulo-formulario">
-      <div class="seccion-encabezado">
-        <div>
-          <h2 id="titulo-formulario" class="seccion-titulo">Registrar solicitud de modificación</h2>
-          <p class="seccion-subtitulo">
-            Propón un nuevo horario entre las 06:00 y las 22:00 e indica el motivo del cambio.
-          </p>
-        </div>
+    <section class="tarjeta paso-formulario" id="cs2" aria-labelledby="titulo-paso-2">
+      <div class="tarjeta-cabecera-flex">
+        <h2 id="titulo-paso-2" tabindex="-1">2. Proponer cambios para el evento</h2>
+        @if (eventoActual) {
+          <div class="etiqueta et-evento-activo" id="badgeEventoClientePaso2">
+            ID: {{ eventoActual.id }} &bull; {{ eventoActual.estado }}
+          </div>
+        }
       </div>
 
-      @if (mensajeExito) {
-        <div class="alerta alerta-exito" role="status" aria-live="polite">
-          <svg class="icono-alerta" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-1.2 14.2L6.6 12l1.4-1.4 2.8 2.8 5.6-5.6 1.4 1.4z"
-              fill="currentColor"
-            />
-          </svg>
-          <div>
-            <strong>Solicitud registrada</strong>
-            <p>{{ mensajeExito }}</p>
-          </div>
-        </div>
-      }
-
-      @if (avisoRefrescoPosterior) {
-        <div class="alerta alerta-aviso" role="alert">
-          <div class="alerta-contenido">
-            <strong>La solicitud se registró correctamente, pero no se pudo actualizar el listado</strong>
-            <p>{{ avisoRefrescoPosterior }}</p>
-          </div>
-          <button type="button" class="btn-reintentar" (click)="recargarSolicitudes.emit()">
-            Recargar listado
-          </button>
-        </div>
-      }
-
-      @if (errorEnvio) {
-        <div class="alerta alerta-error" role="alert">
-          <svg class="icono-alerta" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z"
-              fill="currentColor"
-            />
-          </svg>
-          <div>
-            <strong>No se pudo registrar la solicitud</strong>
-            <p>{{ errorEnvio }}</p>
-          </div>
-        </div>
-      }
-
       @if (!eventoActual) {
-        <div class="estado-seleccion">
-          <svg class="icono-seleccion" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14v10z"
-              fill="currentColor"
-            />
-          </svg>
-          <p>
-            Selecciona el botón <strong>“Solicitar modificación”</strong> en alguno de los eventos
-            para cargar sus datos actuales en este formulario.
-          </p>
+        <div class="aviso aviso-info">
+          Seleccione un evento en el Paso 1 para proponer modificaciones de información general,
+          contacto, fecha u horario.
         </div>
       } @else {
-        <div class="resumen-evento-activo">
-          <div class="resumen-evento-activo__encabezado">
-            <span class="etiqueta-activo">Evento seleccionado #{{ eventoActual.id }}</span>
-            <span class="espacio-activo">{{ eventoActual.espacio }}</span>
-          </div>
-          <h3 class="nombre-activo">{{ eventoActual.nombre }}</h3>
-
-          <div class="comparativa-horarios">
-            <div class="bloque-horario bloque-horario--original">
-              <span class="bloque-horario__titulo">Horario original (actual)</span>
-              <p class="bloque-horario__valor">
-                <strong>Fecha:</strong> {{ eventoActual.fecha }}
-              </p>
-              <p class="bloque-horario__valor">
-                <strong>Horario:</strong> {{ eventoActual.hora_inicio }} - {{ eventoActual.hora_fin }}
-              </p>
-            </div>
-
-            <div class="bloque-horario bloque-horario--propuesto">
-              <span class="bloque-horario__titulo">Horario propuesto</span>
-              <p class="bloque-horario__valor">
-                <strong>Fecha:</strong>
-                {{ formulario.get('fecha_propuesta')?.value || 'Sin definir' }}
-              </p>
-              <p class="bloque-horario__valor">
-                <strong>Horario:</strong>
-                {{ formulario.get('hora_inicio_propuesta')?.value || '--:--' }} -
-                {{ formulario.get('hora_fin_propuesta')?.value || '--:--' }}
-              </p>
-            </div>
-          </div>
-
-          <div class="mensaje-reserva" role="note">
-            <svg class="icono-nota" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-6h2zm0-8h-2V7h2z"
-                fill="currentColor"
-              />
-            </svg>
-            <span>
-              @if (tienePendiente) {
-                La solicitud está pendiente de revisión. Tu reserva actual se mantiene sin cambios
-              } @else {
-                La solicitud quedará pendiente de revisión. Tu reserva actual se mantendrá sin cambios
-              }
-            </span>
-          </div>
-        </div>
-
         @if (tienePendiente) {
-          <div class="alerta alerta-aviso" role="status">
-            <div class="alerta-contenido">
-              <strong>Este evento ya tiene una solicitud pendiente de revisión</strong>
-              <p>
-                No es posible enviar una nueva solicitud para este evento mientras exista una
-                pendiente.
-              </p>
-            </div>
+          <div class="aviso aviso-alerta" role="status">
+            <strong>Este evento ya tiene una solicitud pendiente de revisión.</strong>
+            No es posible enviar una nueva solicitud mientras exista una en trámite.
           </div>
         }
 
-        <form [formGroup]="formulario" (ngSubmit)="onSubmit()" novalidate class="formulario-grid">
-          <div class="campo-grupo">
-            <label for="fecha_propuesta">Fecha propuesta *</label>
-            <input
-              id="fecha_propuesta"
-              type="date"
-              formControlName="fecha_propuesta"
-              [attr.disabled]="tienePendiente || enviando ? true : null"
-            />
-            @if (mostrarErrorControl('fecha_propuesta')) {
-              <div class="mensaje-error">
-                @if (formulario.get('fecha_propuesta')?.hasError('required')) {
-                  <span>La fecha propuesta es obligatoria.</span>
-                } @else if (formulario.get('fecha_propuesta')?.hasError('formatoFecha')) {
-                  <span>La fecha debe tener el formato válido YYYY-MM-DD.</span>
-                }
-              </div>
-            }
-          </div>
-
-          <div class="campos-fila">
-            <div class="campo-grupo">
-              <label for="hora_inicio_propuesta">Hora de inicio propuesta (HH:mm) *</label>
+        <form [formGroup]="formulario" (ngSubmit)="onSubmit()" novalidate>
+          <!-- Bloque 1: Información General y Contacto -->
+          <h3>Información general y contacto</h3>
+          <div class="form">
+            <div>
+              <label for="eventCode">Código del evento</label>
               <input
-                id="hora_inicio_propuesta"
-                type="time"
-                min="06:00"
-                max="22:00"
-                step="60"
-                placeholder="09:00"
-                formControlName="hora_inicio_propuesta"
+                id="eventCode"
+                type="text"
+                readonly
+                class="input-readonly"
+                [value]="eventoActual.id"
+              />
+              <span class="ayuda">Identificador de su reserva (solo lectura).</span>
+            </div>
+
+            <div>
+              <label for="eventSpace">Auditorio asignado</label>
+              <input
+                id="eventSpace"
+                type="text"
+                readonly
+                class="input-readonly"
+                [value]="eventoActual.espacio"
+              />
+              <span class="ayuda">Espacio contratado (solo lectura).</span>
+            </div>
+
+            <div class="completo">
+              <label for="eventName">
+                Nombre de la convocatoria o evento <span class="req">*</span>
+                @if (nombreModificado) {
+                  <span class="mod-pill visible" id="modBadgeEventName">Modificado</span>
+                }
+              </label>
+              <input
+                id="eventName"
+                type="text"
+                required
+                maxlength="120"
+                placeholder="Ej. Ceremonia de graduación"
+                formControlName="nombre_propuesto"
+                [class.campo-modificado]="nombreModificado"
+                [class.input-error]="mostrarErrorControl('nombre_propuesto')"
                 [attr.disabled]="tienePendiente || enviando ? true : null"
               />
-              @if (mostrarErrorControl('hora_inicio_propuesta')) {
-                <div class="mensaje-error">
-                  @if (formulario.get('hora_inicio_propuesta')?.hasError('required')) {
-                    <span>La hora de inicio es obligatoria.</span>
-                  } @else if (formulario.get('hora_inicio_propuesta')?.hasError('formatoHora')) {
-                    <span>Usa el formato estricto HH:mm (ejemplo: 09:00).</span>
-                  } @else if (formulario.get('hora_inicio_propuesta')?.hasError('rangoHorario')) {
-                    <span>La hora de inicio debe estar entre las 06:00 y las 22:00.</span>
+              @if (mostrarErrorControl('nombre_propuesto')) {
+                <span class="msg-error-campo" id="errEventName" role="alert">
+                  @if (
+                    formulario.get('nombre_propuesto')?.hasError('required') ||
+                    formulario.get('nombre_propuesto')?.hasError('nombreVacio')
+                  ) {
+                    El nombre del evento es obligatorio.
+                  } @else if (formulario.get('nombre_propuesto')?.hasError('maximoUnicode')) {
+                    El nombre del evento no puede superar los 120 caracteres.
                   }
-                </div>
+                </span>
               }
             </div>
 
-            <div class="campo-grupo">
-              <label for="hora_fin_propuesta">Hora de fin propuesta (HH:mm) *</label>
+            <div>
+              <label for="eventContact">
+                Persona de contacto <span class="req">*</span>
+                @if (contactoModificado) {
+                  <span class="mod-pill visible" id="modBadgeEventContact">Modificado</span>
+                }
+              </label>
               <input
-                id="hora_fin_propuesta"
-                type="time"
-                min="06:00"
-                max="22:00"
-                step="60"
-                placeholder="13:00"
-                formControlName="hora_fin_propuesta"
+                id="eventContact"
+                type="text"
+                required
+                maxlength="80"
+                placeholder="Nombre de la persona responsable"
+                formControlName="contacto_propuesto"
+                [class.campo-modificado]="contactoModificado"
+                [class.input-error]="mostrarErrorControl('contacto_propuesto')"
                 [attr.disabled]="tienePendiente || enviando ? true : null"
               />
-              @if (mostrarErrorControl('hora_fin_propuesta')) {
-                <div class="mensaje-error">
-                  @if (formulario.get('hora_fin_propuesta')?.hasError('required')) {
-                    <span>La hora de fin es obligatoria.</span>
-                  } @else if (formulario.get('hora_fin_propuesta')?.hasError('formatoHora')) {
-                    <span>Usa el formato estricto HH:mm (ejemplo: 14:00).</span>
-                  } @else if (formulario.get('hora_fin_propuesta')?.hasError('rangoHorario')) {
-                    <span>La hora de fin debe estar entre las 06:00 y las 22:00.</span>
+              @if (mostrarErrorControl('contacto_propuesto')) {
+                <span class="msg-error-campo" id="errEventContact" role="alert">
+                  @if (
+                    formulario.get('contacto_propuesto')?.hasError('required') ||
+                    formulario.get('contacto_propuesto')?.hasError('contactoVacio')
+                  ) {
+                    La persona de contacto es obligatoria.
+                  } @else if (formulario.get('contacto_propuesto')?.hasError('maximoUnicode')) {
+                    La persona de contacto no puede superar los 80 caracteres.
                   }
-                </div>
+                </span>
               }
+            </div>
+
+            <div>
+              <label for="eventPhone">
+                Teléfono de contacto
+                @if (telefonoModificado) {
+                  <span class="mod-pill visible" id="modBadgeEventPhone">Modificado</span>
+                }
+              </label>
+              <input
+                id="eventPhone"
+                type="tel"
+                maxlength="25"
+                placeholder="Ej. 998 765 432"
+                formControlName="telefono_propuesto"
+                [class.campo-modificado]="telefonoModificado"
+                [class.input-error]="mostrarErrorControl('telefono_propuesto')"
+                [attr.disabled]="tienePendiente || enviando ? true : null"
+              />
+              @if (mostrarErrorControl('telefono_propuesto')) {
+                <span class="msg-error-campo" id="errEventPhone" role="alert">
+                  @if (formulario.get('telefono_propuesto')?.hasError('maximoUnicode')) {
+                    El teléfono no puede superar los 25 caracteres.
+                  }
+                </span>
+              }
+            </div>
+
+            <div class="completo">
+              <label for="eventEmail">
+                Correo electrónico
+                @if (correoModificado) {
+                  <span class="mod-pill visible" id="modBadgeEventEmail">Modificado</span>
+                }
+              </label>
+              <input
+                id="eventEmail"
+                type="email"
+                maxlength="80"
+                placeholder="Ej. contacto@cliente.edu.pe"
+                formControlName="correo_propuesto"
+                [class.campo-modificado]="correoModificado"
+                [class.input-error]="mostrarErrorControl('correo_propuesto')"
+                [attr.disabled]="tienePendiente || enviando ? true : null"
+              />
+              @if (mostrarErrorControl('correo_propuesto')) {
+                <span class="msg-error-campo" id="errEventEmail" role="alert">
+                  @if (formulario.get('correo_propuesto')?.hasError('maximoUnicode')) {
+                    El correo electrónico no puede superar los 80 caracteres.
+                  } @else if (formulario.get('correo_propuesto')?.hasError('formatoCorreo')) {
+                    Ingrese un correo electrónico con formato válido (ej. nombre@dominio.pe).
+                  }
+                </span>
+              }
+            </div>
+
+            <div class="completo">
+              <label for="eventNotes">
+                Observaciones y requerimientos técnicos <span class="opc">(opcional)</span>
+                @if (observacionesModificadas) {
+                  <span class="mod-pill visible" id="modBadgeEventNotes">Modificado</span>
+                }
+              </label>
+              <textarea
+                id="eventNotes"
+                rows="2"
+                maxlength="300"
+                placeholder="Requerimientos de audio, micrófonos, pantalla LED, distribución, etc."
+                formControlName="observaciones_propuestas"
+                [class.campo-modificado]="observacionesModificadas"
+                [class.input-error]="mostrarErrorControl('observaciones_propuestas')"
+                [attr.disabled]="tienePendiente || enviando ? true : null"
+              ></textarea>
+              @if (mostrarErrorControl('observaciones_propuestas')) {
+                <span class="msg-error-campo" id="errEventNotes" role="alert">
+                  @if (formulario.get('observaciones_propuestas')?.hasError('maximoUnicode')) {
+                    Las observaciones y requerimientos no pueden superar los 300 caracteres.
+                  }
+                </span>
+              }
+            </div>
+          </div>
+
+          <!-- Bloque 2: Fecha y Horario del Evento -->
+          <div class="bloque-fecha-evento">
+            <h3 class="titulo-fecha-evento">Fecha y horario del evento</h3>
+            <div class="insignia-evento-wrap">
+              <span class="badge-tecnico badge-evento">Evento principal</span>
+            </div>
+            <div class="form form-evento-principal">
+              <div>
+                <label for="eventDate">
+                  Fecha del evento <span class="req">*</span>
+                  @if (fechaModificada) {
+                    <span class="mod-pill visible" id="modBadgeEventDate">Modificado</span>
+                  }
+                </label>
+                <div class="campo-fecha-wrap" id="wrap_eventDate">
+                  <input
+                    id="eventDate"
+                    type="date"
+                    required
+                    formControlName="fecha_propuesta"
+                    class="input-fecha"
+                    [class.campo-modificado]="fechaModificada"
+                    [class.input-error]="mostrarErrorControl('fecha_propuesta')"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                  <span class="icono-calendario" aria-hidden="true">
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                  </span>
+                </div>
+                @if (mostrarErrorControl('fecha_propuesta')) {
+                  <span class="msg-error-campo" id="errEventDate" role="alert">
+                    @if (formulario.get('fecha_propuesta')?.hasError('required')) {
+                      La fecha propuesta es obligatoria.
+                    } @else if (formulario.get('fecha_propuesta')?.hasError('formatoFecha')) {
+                      Ingrese una fecha válida.
+                    }
+                  </span>
+                }
+              </div>
+
+              <div>
+                <label for="eventStartTime">
+                  Hora de inicio del evento <span class="req">*</span>
+                  @if (horaInicioModificada) {
+                    <span class="mod-pill visible" id="modBadgeEventStartTime">Modificado</span>
+                  }
+                </label>
+                <div class="campo-hora-wrap" id="wrap_eventStartTime">
+                  <input
+                    id="eventStartTime"
+                    type="time"
+                    min="06:00"
+                    max="22:00"
+                    step="60"
+                    placeholder="09:00"
+                    required
+                    formControlName="hora_inicio_propuesta"
+                    class="input-hora"
+                    [class.campo-modificado]="horaInicioModificada"
+                    [class.input-error]="mostrarErrorControl('hora_inicio_propuesta')"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                  <span class="icono-reloj" aria-hidden="true">
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                  </span>
+                </div>
+                @if (mostrarErrorControl('hora_inicio_propuesta')) {
+                  <span class="msg-error-campo" id="errEventStartTime" role="alert">
+                    @if (formulario.get('hora_inicio_propuesta')?.hasError('required')) {
+                      La hora de inicio es obligatoria.
+                    } @else if (formulario.get('hora_inicio_propuesta')?.hasError('formatoHora')) {
+                      Use el formato HH:mm (ej. 09:00).
+                    } @else if (formulario.get('hora_inicio_propuesta')?.hasError('rangoHorario')) {
+                      El horario debe estar entre las 06:00 y las 22:00.
+                    }
+                  </span>
+                }
+              </div>
+
+              <div>
+                <label for="eventEndTime">
+                  Hora de fin del evento <span class="req">*</span>
+                  @if (horaFinModificada) {
+                    <span class="mod-pill visible" id="modBadgeEventEndTime">Modificado</span>
+                  }
+                </label>
+                <div class="campo-hora-wrap" id="wrap_eventEndTime">
+                  <input
+                    id="eventEndTime"
+                    type="time"
+                    min="06:00"
+                    max="22:00"
+                    step="60"
+                    placeholder="13:00"
+                    required
+                    formControlName="hora_fin_propuesta"
+                    class="input-hora"
+                    [class.campo-modificado]="horaFinModificada"
+                    [class.input-error]="mostrarErrorControl('hora_fin_propuesta')"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                  <span class="icono-reloj" aria-hidden="true">
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                  </span>
+                </div>
+                @if (mostrarErrorControl('hora_fin_propuesta')) {
+                  <span class="msg-error-campo" id="errEventEndTime" role="alert">
+                    @if (formulario.get('hora_fin_propuesta')?.hasError('required')) {
+                      La hora de fin es obligatoria.
+                    } @else if (formulario.get('hora_fin_propuesta')?.hasError('formatoHora')) {
+                      Use el formato HH:mm (ej. 13:00).
+                    } @else if (formulario.get('hora_fin_propuesta')?.hasError('rangoHorario')) {
+                      El horario debe estar entre las 06:00 y las 22:00.
+                    }
+                  </span>
+                }
+              </div>
+            </div>
+            <p class="ayuda" style="margin-top: 6px;">
+              * Horario regular de funcionamiento del auditorio: 06:00 a 22:00. Evento, montaje y
+              desmontaje deben ocurrir el mismo día.
+            </p>
+          </div>
+
+          <!-- Bloque 3: Tiempos Técnicos Adicionales -->
+          <h3 class="titulo-fecha-evento" style="margin-top: 18px;">Tiempos técnicos adicionales</h3>
+
+          <div class="contenedor-tiempos-tecnicos grid-adicionales">
+            <!-- Montaje Independiente -->
+            <div class="caja-adicional caja-montaje" [class.desactivada]="!formulario.get('has_montaje')?.value" id="panelMontaje">
+              <div class="caja-adicional-cabecera">
+                <label class="check-label" for="chkMontaje">
+                  <input
+                    type="checkbox"
+                    id="chkMontaje"
+                    formControlName="has_montaje"
+                    (change)="alCambiarMontaje()"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                  <span>Requiere montaje previo</span>
+                </label>
+                <span class="badge-tecnico badge-montaje">Montaje técnico</span>
+              </div>
+              <div class="campos-adicional" [class.oculto]="!formulario.get('has_montaje')?.value" id="fieldsMontaje">
+                <div class="form-tecnico">
+                  <div class="campo-tecnico-fecha">
+                    <label for="montajeDate">
+                      Fecha&nbsp;<span class="req">*</span>
+                      @if (montajeFechaModificada) {
+                        <span class="mod-pill visible" id="modBadgeMontajeDate">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-fecha-wrap" id="wrap_montajeDate">
+                      <input
+                        type="date"
+                        id="montajeDate"
+                        formControlName="montaje_fecha"
+                        class="input-fecha"
+                        [class.campo-modificado]="montajeFechaModificada"
+                        [class.input-error]="mostrarErrorControl('montaje_fecha')"
+                        aria-label="Fecha de montaje"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-calendario" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                          <line x1="16" y1="2" x2="16" y2="6"></line>
+                          <line x1="8" y1="2" x2="8" y2="6"></line>
+                          <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('montaje_fecha')) {
+                      <span class="msg-error-campo" id="errMontajeDate" role="alert">
+                        Ingrese una fecha válida para el montaje.
+                      </span>
+                    }
+                  </div>
+                  <div class="campo-tecnico-inicio">
+                    <label for="montajeStartTime">
+                      Hora de inicio&nbsp;<span class="req">*</span>
+                      @if (montajeInicioModificado) {
+                        <span class="mod-pill visible" id="modBadgeMontajeStart">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-hora-wrap" id="wrap_montajeStartTime">
+                      <input
+                        type="time"
+                        id="montajeStartTime"
+                        formControlName="montaje_hora_inicio"
+                        min="06:00"
+                        max="22:00"
+                        step="60"
+                        class="input-hora"
+                        [class.campo-modificado]="montajeInicioModificado"
+                        [class.input-error]="mostrarErrorControl('montaje_hora_inicio')"
+                        aria-label="Hora de inicio del montaje"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-reloj" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('montaje_hora_inicio')) {
+                      <span class="msg-error-campo" id="errMontajeStart" role="alert">
+                        Use el formato HH:mm (06:00 a 22:00).
+                      </span>
+                    }
+                  </div>
+                  <div class="campo-tecnico-fin">
+                    <label for="montajeEndTime">
+                      Hora de fin&nbsp;<span class="req">*</span>
+                      @if (montajeFinModificado) {
+                        <span class="mod-pill visible" id="modBadgeMontajeEnd">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-hora-wrap" id="wrap_montajeEndTime">
+                      <input
+                        type="time"
+                        id="montajeEndTime"
+                        formControlName="montaje_hora_fin"
+                        min="06:00"
+                        max="22:00"
+                        step="60"
+                        class="input-hora"
+                        [class.campo-modificado]="montajeFinModificado"
+                        [class.input-error]="mostrarErrorControl('montaje_hora_fin')"
+                        aria-label="Hora de fin del montaje"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-reloj" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('montaje_hora_fin')) {
+                      <span class="msg-error-campo" id="errMontajeEnd" role="alert">
+                        Use el formato HH:mm (06:00 a 22:00).
+                      </span>
+                    }
+                  </div>
+                </div>
+                <span class="ayuda">* Por defecto finaliza al comenzar el evento.</span>
+              </div>
+            </div>
+
+            <!-- Desmontaje Independiente -->
+            <div class="caja-adicional caja-desmontaje" [class.desactivada]="!formulario.get('has_desmontaje')?.value" id="panelDesmontaje">
+              <div class="caja-adicional-cabecera">
+                <label class="check-label" for="chkDesmontaje">
+                  <input
+                    type="checkbox"
+                    id="chkDesmontaje"
+                    formControlName="has_desmontaje"
+                    (change)="alCambiarDesmontaje()"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                  <span>Requiere desmontaje posterior</span>
+                </label>
+                <span class="badge-tecnico badge-desmontaje">Desmontaje técnico</span>
+              </div>
+              <div class="campos-adicional" [class.oculto]="!formulario.get('has_desmontaje')?.value" id="fieldsDesmontaje">
+                <div class="form-tecnico">
+                  <div class="campo-tecnico-fecha">
+                    <label for="desmontajeDate">
+                      Fecha&nbsp;<span class="req">*</span>
+                      @if (desmontajeFechaModificada) {
+                        <span class="mod-pill visible" id="modBadgeDesmontajeDate">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-fecha-wrap" id="wrap_desmontajeDate">
+                      <input
+                        type="date"
+                        id="desmontajeDate"
+                        formControlName="desmontaje_fecha"
+                        class="input-fecha"
+                        [class.campo-modificado]="desmontajeFechaModificada"
+                        [class.input-error]="mostrarErrorControl('desmontaje_fecha')"
+                        aria-label="Fecha de desmontaje"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-calendario" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                          <line x1="16" y1="2" x2="16" y2="6"></line>
+                          <line x1="8" y1="2" x2="8" y2="6"></line>
+                          <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('desmontaje_fecha')) {
+                      <span class="msg-error-campo" id="errDesmontajeDate" role="alert">
+                        Ingrese una fecha válida para el desmontaje.
+                      </span>
+                    }
+                  </div>
+                  <div class="campo-tecnico-inicio">
+                    <label for="desmontajeStartTime">
+                      Hora de inicio&nbsp;<span class="req">*</span>
+                      @if (desmontajeInicioModificado) {
+                        <span class="mod-pill visible" id="modBadgeDesmontajeStart">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-hora-wrap" id="wrap_desmontajeStartTime">
+                      <input
+                        type="time"
+                        id="desmontajeStartTime"
+                        formControlName="desmontaje_hora_inicio"
+                        min="06:00"
+                        max="22:00"
+                        step="60"
+                        class="input-hora"
+                        [class.campo-modificado]="desmontajeInicioModificado"
+                        [class.input-error]="mostrarErrorControl('desmontaje_hora_inicio')"
+                        aria-label="Hora de inicio del desmontaje"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-reloj" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('desmontaje_hora_inicio')) {
+                      <span class="msg-error-campo" id="errDesmontajeStart" role="alert">
+                        Use el formato HH:mm (06:00 a 22:00).
+                      </span>
+                    }
+                  </div>
+                  <div class="campo-tecnico-fin">
+                    <label for="desmontajeEndTime">
+                      Hora de fin&nbsp;<span class="req">*</span>
+                      @if (desmontajeFinModificado) {
+                        <span class="mod-pill visible" id="modBadgeDesmontajeEnd">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-hora-wrap" id="wrap_desmontajeEndTime">
+                      <input
+                        type="time"
+                        id="desmontajeEndTime"
+                        formControlName="desmontaje_hora_fin"
+                        min="06:00"
+                        max="22:00"
+                        step="60"
+                        class="input-hora"
+                        [class.campo-modificado]="desmontajeFinModificado"
+                        [class.input-error]="mostrarErrorControl('desmontaje_hora_fin')"
+                        aria-label="Hora de fin del desmontaje"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-reloj" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('desmontaje_hora_fin')) {
+                      <span class="msg-error-campo" id="errDesmontajeEnd" role="alert">
+                        Use el formato HH:mm (06:00 a 22:00).
+                      </span>
+                    }
+                  </div>
+                </div>
+                <span class="ayuda">* Por defecto inicia al concluir el evento.</span>
+              </div>
+            </div>
+
+            <!-- Ensayo Técnico Previo -->
+            <div class="caja-adicional caja-ensayo" [class.desactivada]="!formulario.get('has_ensayo')?.value" id="panelEnsayo">
+              <div class="caja-adicional-cabecera">
+                <label class="check-label" for="chkEnsayo">
+                  <input
+                    type="checkbox"
+                    id="chkEnsayo"
+                    formControlName="has_ensayo"
+                    (change)="alCambiarEnsayo()"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                  <span>Requiere ensayo técnico previo</span>
+                  @if (ensayoAgregadoModificado) {
+                    <span class="mod-pill visible" id="modBadgeEnsayoAdded">Ensayo añadido</span>
+                  }
+                </label>
+                <span class="badge-tecnico badge-ensayo">Ensayo técnico</span>
+              </div>
+              <div class="campos-adicional" [class.oculto]="!formulario.get('has_ensayo')?.value" id="fieldsEnsayo">
+                <div class="form-tecnico">
+                  <div class="campo-tecnico-fecha">
+                    <label for="ensayoDate">
+                      Fecha&nbsp;<span class="req">*</span>
+                      @if (ensayoFechaModificada) {
+                        <span class="mod-pill visible" id="modBadgeEnsayoDate">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-fecha-wrap" id="wrap_ensayoDate">
+                      <input
+                        type="date"
+                        id="ensayoDate"
+                        formControlName="ensayo_fecha"
+                        class="input-fecha"
+                        [class.campo-modificado]="ensayoFechaModificada"
+                        [class.input-error]="mostrarErrorControl('ensayo_fecha')"
+                        aria-label="Fecha del ensayo técnico"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-calendario" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                          <line x1="16" y1="2" x2="16" y2="6"></line>
+                          <line x1="8" y1="2" x2="8" y2="6"></line>
+                          <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('ensayo_fecha')) {
+                      <span class="msg-error-campo" id="errEnsayoDate" role="alert">
+                        Ingrese una fecha válida para el ensayo técnico.
+                      </span>
+                    }
+                  </div>
+                  <div class="campo-tecnico-inicio">
+                    <label for="ensayoStartTime">
+                      Hora de inicio&nbsp;<span class="req">*</span>
+                      @if (ensayoInicioModificado) {
+                        <span class="mod-pill visible" id="modBadgeEnsayoStart">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-hora-wrap" id="wrap_ensayoStartTime">
+                      <input
+                        type="time"
+                        id="ensayoStartTime"
+                        formControlName="ensayo_hora_inicio"
+                        min="06:00"
+                        max="22:00"
+                        step="60"
+                        class="input-hora"
+                        [class.campo-modificado]="ensayoInicioModificado"
+                        [class.input-error]="mostrarErrorControl('ensayo_hora_inicio')"
+                        aria-label="Hora de inicio del ensayo técnico"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-reloj" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('ensayo_hora_inicio')) {
+                      <span class="msg-error-campo" id="errEnsayoStart" role="alert">
+                        Use el formato HH:mm (06:00 a 22:00).
+                      </span>
+                    }
+                  </div>
+                  <div class="campo-tecnico-fin">
+                    <label for="ensayoEndTime">
+                      Hora de fin&nbsp;<span class="req">*</span>
+                      @if (ensayoFinModificado) {
+                        <span class="mod-pill visible" id="modBadgeEnsayoEnd">Modificado</span>
+                      }
+                    </label>
+                    <div class="campo-hora-wrap" id="wrap_ensayoEndTime">
+                      <input
+                        type="time"
+                        id="ensayoEndTime"
+                        formControlName="ensayo_hora_fin"
+                        min="06:00"
+                        max="22:00"
+                        step="60"
+                        class="input-hora"
+                        [class.campo-modificado]="ensayoFinModificado"
+                        [class.input-error]="mostrarErrorControl('ensayo_hora_fin')"
+                        aria-label="Hora de fin del ensayo técnico"
+                        [attr.disabled]="tienePendiente || enviando ? true : null"
+                      />
+                      <span class="icono-reloj" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </span>
+                    </div>
+                    @if (mostrarErrorControl('ensayo_hora_fin')) {
+                      <span class="msg-error-campo" id="errEnsayoEnd" role="alert">
+                        Use el formato HH:mm (06:00 a 22:00).
+                      </span>
+                    }
+                  </div>
+                </div>
+                <span class="ayuda">* El ensayo debe finalizar antes del evento y no cruzarse con su montaje ni con otros eventos.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cronograma resumido del horario propuesto -->
+          <div class="resumen-horario-box" id="resumenHorarioBoxCliente">
+            <div class="resumen-horario-titulo">Cronograma propuesto:</div>
+            <div class="resumen-horario-items" id="resumenHorarioItemsCliente">
+              @if (formulario.get('has_ensayo')?.value && formulario.get('ensayo_hora_inicio')?.value && formulario.get('ensayo_hora_fin')?.value) {
+                <span class="resumen-horario-pill pill-ensayo">
+                  <strong>Ensayo:</strong> {{ formulario.get('ensayo_hora_inicio')?.value }} a {{ formulario.get('ensayo_hora_fin')?.value }}@if (obtenerDuracionEnsayo(); as dur) { ({{ dur }})}
+                </span>
+              }
+              @if (formulario.get('has_montaje')?.value && formulario.get('montaje_hora_inicio')?.value && formulario.get('montaje_hora_fin')?.value) {
+                <span class="resumen-horario-pill pill-montaje">
+                  <strong>Montaje:</strong> {{ formulario.get('montaje_hora_inicio')?.value }} a {{ formulario.get('montaje_hora_fin')?.value }}@if (obtenerDuracionMontaje(); as dur) { ({{ dur }})}
+                </span>
+              }
+              <span class="resumen-horario-pill pill-evento">
+                <strong>Evento:</strong> {{ formulario.get('hora_inicio_propuesta')?.value || '--:--' }} a {{ formulario.get('hora_fin_propuesta')?.value || '--:--' }}@if (obtenerDuracionPropuesta(); as dur) { ({{ dur }})}
+              </span>
+              @if (formulario.get('has_desmontaje')?.value && formulario.get('desmontaje_hora_inicio')?.value && formulario.get('desmontaje_hora_fin')?.value) {
+                <span class="resumen-horario-pill pill-desmontaje">
+                  <strong>Desmontaje:</strong> {{ formulario.get('desmontaje_hora_inicio')?.value }} a {{ formulario.get('desmontaje_hora_fin')?.value }}@if (obtenerDuracionDesmontaje(); as dur) { ({{ dur }})}
+                </span>
+              }
+            </div>
+          </div>
+
+          <!-- Bloque 4: Motivo de la Solicitud (OBLIGATORIO) -->
+          <div class="form" style="margin-top: 18px;">
+            <div class="completo">
+              <label for="requestReason">
+                Motivo de la solicitud de modificación <span class="req">*</span>
+              </label>
+              <textarea
+                id="requestReason"
+                rows="3"
+                required
+                placeholder="Explique la razón del cambio (ej. Ajuste de agenda de los ponentes principales, extensión de ceremonia, necesidad de ensayo previo...)"
+                maxlength="400"
+                formControlName="motivo"
+                [class.input-error]="mostrarErrorControl('motivo')"
+                [attr.disabled]="tienePendiente || enviando ? true : null"
+              ></textarea>
+              @if (mostrarErrorControl('motivo')) {
+                <span class="msg-error-campo" id="errRequestReason" role="alert">
+                  @if (
+                    formulario.get('motivo')?.hasError('required') ||
+                    formulario.get('motivo')?.hasError('motivoVacio')
+                  ) {
+                    Debe indicar el motivo de la solicitud (no puede contener solo espacios).
+                  } @else if (formulario.get('motivo')?.hasError('maximoUnicode')) {
+                    El motivo no puede superar los 400 caracteres.
+                  }
+                </span>
+              }
+              <span class="ayuda">
+                Esta información es indispensable para que el asesor comercial evalúe la viabilidad
+                de la solicitud.
+              </span>
             </div>
           </div>
 
           @if (mostrarErroresGrupo() && formulario.hasError('inicioPosteriorOIgualAFin')) {
-            <div class="mensaje-error mensaje-error--bloque" role="alert">
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
               La hora de inicio propuesta debe ser anterior a la hora de fin.
             </div>
           }
 
-          @if (mostrarErroresGrupo() && formulario.hasError('sinCambiosRespectoAlOriginal')) {
-            <div class="mensaje-error mensaje-error--bloque" role="alert">
-              Debes proponer al menos un cambio en la fecha o en el horario respecto al evento
-              original.
+          @if (mostrarErroresGrupo() && formulario.hasError('montajeInicioPosteriorOIgualAFin')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              La hora de inicio del montaje debe ser anterior a su hora de fin.
             </div>
           }
 
-          <div class="campo-grupo">
-            <div class="etiqueta-con-contador">
-              <label for="motivo">Motivo de la solicitud *</label>
-              <span
-                class="contador-caracteres"
-                [class.contador-caracteres--excedido]="longitudMotivoUnicode > 400"
-              >
-                {{ longitudMotivoUnicode }} / 400 caracteres
-              </span>
+          @if (mostrarErroresGrupo() && formulario.hasError('montajeFinalizaDespuesDeInicio')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              El montaje no puede finalizar después del inicio del evento.
             </div>
-            <textarea
-              id="motivo"
-              rows="4"
-              placeholder="Describe el motivo técnico u operativo del cambio solicitado..."
-              formControlName="motivo"
-              [attr.disabled]="tienePendiente || enviando ? true : null"
-            ></textarea>
-            @if (mostrarErrorControl('motivo')) {
-              <div class="mensaje-error">
-                @if (
-                  formulario.get('motivo')?.hasError('required') ||
-                  formulario.get('motivo')?.hasError('motivoVacio')
-                ) {
-                  <span>El motivo es obligatorio y no puede contener solo espacios.</span>
-                } @else if (formulario.get('motivo')?.hasError('maximoUnicode')) {
-                  <span>El motivo no puede superar los 400 caracteres.</span>
-                }
-              </div>
-            }
-          </div>
+          }
 
-          <div class="acciones-formulario">
+          @if (mostrarErroresGrupo() && formulario.hasError('desmontajeInicioPosteriorOIgualAFin')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              La hora de inicio del desmontaje debe ser anterior a su hora de fin.
+            </div>
+          }
+
+          @if (mostrarErroresGrupo() && formulario.hasError('desmontajeIniciaAntesDeFin')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              El desmontaje no puede iniciar antes del fin del evento.
+            </div>
+          }
+
+          @if (mostrarErroresGrupo() && formulario.hasError('ensayoInicioPosteriorOIgualAFin')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              La hora de inicio del ensayo técnico debe ser anterior a su hora de fin.
+            </div>
+          }
+
+          @if (mostrarErroresGrupo() && formulario.hasError('ensayoFinalizaDespuesDeInicio')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              El ensayo técnico debe culminar antes de la hora de inicio del evento.
+            </div>
+          }
+
+          @if (mostrarErroresGrupo() && formulario.hasError('ensayoCruzaConMontaje')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              El ensayo técnico no puede cruzarse con el montaje del evento.
+            </div>
+          }
+
+          @if (mostrarErroresGrupo() && formulario.hasError('sinCambiosRespectoAlOriginal')) {
+            <div class="msg-error" id="errorPaso2Cliente" role="alert">
+              No se han detectado modificaciones en la información general, contacto, fecha, horario ni
+              tiempos técnicos. Debe proponer al menos un cambio efectivo respecto al evento original antes
+              de continuar.
+            </div>
+          }
+
+          <!-- Acciones del Paso 2 -->
+          <div class="acciones">
             <button
-              type="submit"
-              class="btn-enviar"
-              [disabled]="enviando || tienePendiente"
+              type="button"
+              class="btn btn-sec"
+              (click)="alSolicitarVolver()"
+              [disabled]="enviando"
             >
-              @if (enviando) {
-                Enviando solicitud...
-              } @else {
-                Enviar solicitud
-              }
+              &larr; Volver a mis eventos
             </button>
+
+            <div class="der">
+              <button
+                type="button"
+                class="btn btn-sec"
+                id="btnDescartarPaso2Cliente"
+                (click)="alSolicitarDescartar()"
+                [disabled]="enviando || tienePendiente || !tieneCambiosEnBorrador()"
+              >
+                Descartar cambios
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primario"
+                id="btnAvanzarPaso3Cliente"
+                [disabled]="enviando || tienePendiente"
+              >
+                Continuar a revisión &rarr;
+              </button>
+            </div>
           </div>
         </form>
       }
@@ -276,289 +905,452 @@ import {
   `,
   styles: [
     `
-      .panel-seccion {
-        background: var(--st-surface);
-        border: 1px solid var(--st-border);
-        border-radius: 10px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(19, 38, 74, 0.05);
+      .bloque-fecha-evento {
+        margin-top: 18px;
       }
 
-      .seccion-encabezado {
-        margin-bottom: 1.15rem;
+      .titulo-fecha-evento {
+        font-size: 14px;
+        color: var(--primario-2);
+        margin: 0 0 12px 0;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--borde);
       }
 
-      .seccion-titulo {
-        margin: 0;
-        font-size: 1.25rem;
-        color: var(--st-navy);
-      }
-
-      .seccion-subtitulo {
-        margin: 0.25rem 0 0;
-        font-size: 0.92rem;
-        color: var(--st-text-muted);
-      }
-
-      .estado-seleccion {
+      .insignia-evento-wrap {
         display: flex;
         align-items: center;
-        gap: 0.85rem;
-        padding: 1.35rem;
-        border: 1px dashed var(--st-border);
-        border-radius: 8px;
-        background: #f9fbff;
-        color: var(--st-text-muted);
+        margin-bottom: 16px;
       }
 
-      .icono-seleccion {
-        width: 28px;
-        height: 28px;
-        color: var(--st-blue);
-        flex-shrink: 0;
-      }
-
-      .resumen-evento-activo {
-        background: #f6f9ff;
-        border: 1px solid #d4e1f7;
-        border-left: 5px solid var(--st-blue);
-        border-radius: 8px;
-        padding: 1.1rem;
-        margin-bottom: 1.25rem;
-      }
-
-      .resumen-evento-activo__encabezado {
-        display: flex;
-        justify-content: space-between;
+      .badge-tecnico {
+        display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.35rem;
-      }
-
-      .etiqueta-activo {
-        font-size: 0.78rem;
-        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 14px;
+        font-size: 11.5px;
+        font-weight: bold;
+        letter-spacing: 0.3px;
         text-transform: uppercase;
-        color: var(--st-blue);
-        letter-spacing: 0.04em;
       }
 
-      .espacio-activo {
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: var(--st-text-muted);
+      .badge-tecnico.badge-evento {
+        background: #eef2ff;
+        color: #1f4e9c;
+        border: 1px solid #c7d2fe;
       }
 
-      .nombre-activo {
-        margin: 0 0 0.85rem;
-        font-size: 1.1rem;
-        color: var(--st-navy);
-      }
-
-      .comparativa-horarios {
+      .form {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-        gap: 0.85rem;
-        margin-bottom: 0.9rem;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
       }
 
-      .bloque-horario {
-        padding: 0.75rem 0.9rem;
-        border-radius: 6px;
-        background: #ffffff;
-        border: 1px solid var(--st-border);
+      .form-evento-principal {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       }
 
-      .bloque-horario--propuesto {
-        border-color: var(--st-gold);
-        background: #fffdf7;
-      }
-
-      .bloque-horario__titulo {
-        display: block;
-        font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: var(--st-navy);
-        margin-bottom: 0.35rem;
-      }
-
-      .bloque-horario__valor {
-        margin: 0.2rem 0;
-        font-size: 0.9rem;
-      }
-
-      .mensaje-reserva {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.65rem 0.8rem;
-        border-radius: 6px;
-        background: #eef3fb;
-        color: var(--st-navy);
-        font-size: 0.88rem;
-        font-weight: 600;
-      }
-
-      .icono-nota,
-      .icono-alerta {
-        width: 18px;
-        height: 18px;
-        flex-shrink: 0;
-      }
-
-      .formulario-grid {
-        display: grid;
-        gap: 1rem;
-      }
-
-      .campos-fila {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-        gap: 1rem;
-      }
-
-      .campo-grupo {
-        display: flex;
-        flex-direction: column;
-        gap: 0.35rem;
+      .completo {
+        grid-column: 1 / -1;
       }
 
       label {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: var(--st-navy);
+        display: block;
+        font-size: 13px;
+        font-weight: bold;
+        margin-bottom: 6px;
+        color: var(--primario);
       }
 
-      input,
-      textarea {
-        padding: 0.6rem 0.75rem;
-        border: 1px solid #c5d1e6;
-        border-radius: 6px;
-        background: #ffffff;
-        color: var(--st-text);
-        transition: border-color 0.15s ease;
+      label .req {
+        color: var(--error);
+        margin-left: 2px;
       }
 
-      input:focus,
-      textarea:focus {
-        outline: none;
-        border-color: var(--st-blue);
-        box-shadow: 0 0 0 3px rgba(31, 78, 156, 0.14);
+      label .opc {
+        font-weight: normal;
+        color: var(--gris);
+        font-size: 12px;
       }
 
-      input:disabled,
-      textarea:disabled {
-        background: #f1f4f9;
-        cursor: not-allowed;
-      }
-
-      .etiqueta-con-contador {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      .contador-caracteres {
-        font-size: 0.8rem;
-        color: var(--st-text-muted);
-        font-weight: 600;
-      }
-
-      .contador-caracteres--excedido {
-        color: var(--st-danger);
-        font-weight: 700;
-      }
-
-      .mensaje-error {
-        font-size: 0.83rem;
-        color: var(--st-danger);
-        font-weight: 600;
-      }
-
-      .mensaje-error--bloque {
-        padding: 0.6rem 0.75rem;
-        background: var(--st-danger-bg);
-        border: 1px solid #fecdca;
-        border-radius: 6px;
-      }
-
-      .acciones-formulario {
-        margin-top: 0.35rem;
-      }
-
-      .btn-enviar {
+      .form input,
+      .form textarea {
         width: 100%;
-        padding: 0.75rem 1.2rem;
-        border: none;
+        padding: 9px 10px;
+        border: 1px solid var(--borde);
         border-radius: 6px;
-        background: var(--st-navy);
-        border-bottom: 3px solid var(--st-gold);
-        color: #ffffff;
-        font-weight: 700;
-        font-size: 0.96rem;
-        cursor: pointer;
-        transition: background-color 0.15s ease;
+        font-size: 14px;
+        font-family: inherit;
+        background: var(--blanco);
+        color: var(--texto);
+        transition:
+          border-color 0.15s,
+          outline 0.15s;
       }
 
-      .btn-enviar:hover:not(:disabled) {
-        background: var(--st-blue);
-      }
-
-      .btn-enviar:disabled {
-        background: #c8d2e3;
-        border-bottom-color: #aebbd1;
-        color: #54627a;
+      .form input.input-readonly,
+      .form input[readonly] {
+        background: var(--suave);
+        color: var(--gris);
         cursor: not-allowed;
       }
 
-      .alerta {
+      .form input:focus:not([readonly]),
+      .form textarea:focus {
+        outline: 2px solid var(--primario-2);
+        border-color: transparent;
+      }
+
+      .form input.campo-modificado,
+      .form textarea.campo-modificado {
+        border-color: #f2a900;
+        background-color: #fffdf5;
+      }
+
+      .form input.input-error,
+      .form textarea.input-error {
+        border-color: var(--error) !important;
+        background-color: #fff5f5 !important;
+      }
+
+      .campo-hora-wrap,
+      .campo-fecha-wrap {
+        position: relative;
+        width: 100%;
         display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.75rem;
-        padding: 0.9rem 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
+        align-items: center;
       }
 
-      .alerta p {
-        margin: 0.2rem 0 0;
-        font-size: 0.88rem;
-      }
-
-      .alerta-exito {
-        background: var(--st-success-bg);
-        border: 1px solid #abefc6;
-        color: var(--st-success);
-        justify-content: flex-start;
-      }
-
-      .alerta-error {
-        background: var(--st-danger-bg);
-        border: 1px solid #fecdca;
-        color: var(--st-danger);
-        justify-content: flex-start;
-      }
-
-      .alerta-aviso {
-        background: var(--st-warning-bg);
-        border: 1px solid #f7d994;
-        color: var(--st-warning-text);
-        flex-wrap: wrap;
-      }
-
-      .btn-reintentar {
-        padding: 0.45rem 0.8rem;
+      .campo-hora-wrap input.input-hora,
+      .campo-fecha-wrap input.input-fecha {
+        width: 100%;
+        padding: 9px 36px 9px 10px;
+        height: 38px;
+        background: var(--blanco);
+        border: 1px solid var(--borde);
         border-radius: 6px;
-        border: 1px solid var(--st-warning-text);
-        background: #ffffff;
-        color: var(--st-warning-text);
-        font-weight: 700;
-        font-size: 0.84rem;
+        font-size: 14px;
+        font-family: inherit;
+        color: var(--texto);
+        font-weight: normal;
         cursor: pointer;
+        transition:
+          border-color 0.15s ease,
+          box-shadow 0.15s ease,
+          outline 0.15s ease;
+      }
+
+      .campo-hora-wrap input.input-hora:focus,
+      .campo-fecha-wrap input.input-fecha:focus {
+        outline: 2px solid var(--primario-2);
+        border-color: transparent;
+      }
+
+      .campo-hora-wrap input.input-hora:disabled,
+      .campo-fecha-wrap input.input-fecha:disabled {
+        background-color: var(--suave);
+        color: var(--gris);
+        cursor: not-allowed;
+      }
+
+      .campo-hora-wrap .icono-reloj,
+      .campo-fecha-wrap .icono-calendario {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--gris);
+        pointer-events: none;
+        transition: color 0.15s ease;
+      }
+
+      .campo-hora-wrap:focus-within .icono-reloj,
+      .campo-fecha-wrap:focus-within .icono-calendario {
+        color: var(--primario-2);
+      }
+
+      .campo-hora-wrap input.input-hora.campo-modificado,
+      .campo-fecha-wrap input.input-fecha.campo-modificado {
+        border-color: #f2a900;
+        background-color: #fffdf5;
+      }
+
+      .campo-hora-wrap input.input-hora.input-error,
+      .campo-fecha-wrap input.input-fecha.input-error {
+        border-color: var(--error) !important;
+        background-color: #fff5f5 !important;
+      }
+
+      .mod-pill {
+        display: none;
+        background: #fff4d6;
+        color: #8a6100;
+        border: 1px solid #f6d17b;
+        border-radius: 10px;
+        padding: 1px 7px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-left: 6px;
+        vertical-align: middle;
+      }
+
+      .mod-pill.visible {
+        display: inline-block;
+      }
+
+      .msg-error-campo {
+        display: block;
+        color: var(--error);
+        font-size: 12px;
+        margin-top: 3px;
+        min-height: 14px;
+      }
+
+      .msg-error {
+        color: var(--error);
+        font-size: 13px;
+        margin-top: 10px;
+        font-weight: bold;
+      }
+
+      .resumen-horario-box {
+        background: var(--blanco);
+        border: 1px solid var(--borde);
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-top: 16px;
+      }
+
+      .resumen-horario-titulo {
+        font-size: 12px;
+        font-weight: bold;
+        color: var(--gris);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+
+      .resumen-horario-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .timeline-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .timeline-pill .pill-label {
+        font-weight: bold;
+      }
+
+      .timeline-pill.evento {
+        background: #eef2ff;
+        color: var(--primario-2);
+        border: 1px solid #c7d2fe;
+      }
+
+      .contenedor-tiempos-tecnicos {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        width: 100%;
+        margin-top: 10px;
+      }
+
+      .caja-adicional {
+        background: var(--suave);
+        border: 1px solid var(--borde);
+        border-radius: 8px;
+        padding: 16px;
+        width: 100%;
+        box-sizing: border-box;
+        transition: padding 0.15s ease, background 0.15s ease;
+      }
+
+      .caja-adicional.desactivada {
+        padding: 14px 16px;
+      }
+
+      .caja-adicional-cabecera {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .caja-adicional.desactivada .caja-adicional-cabecera {
+        margin-bottom: 0 !important;
+      }
+
+      .check-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: bold;
+        color: var(--primario);
+        cursor: pointer;
+        margin-bottom: 0;
+      }
+
+      .check-label input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+        accent-color: var(--primario-2);
+      }
+
+      .campos-adicional {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px dashed var(--borde);
+      }
+
+      .campos-adicional.oculto {
+        display: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        height: 0 !important;
+      }
+
+      .form-tecnico {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px 16px;
+        align-items: start;
+      }
+
+      .campo-tecnico-fecha {
+        grid-column: 1;
+        width: 100%;
+      }
+
+      .campo-tecnico-inicio {
+        grid-column: 2;
+        width: 100%;
+      }
+
+      .campo-tecnico-fin {
+        grid-column: 3;
+        width: 100%;
+      }
+
+      .form-tecnico > div {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .badge-tecnico.badge-montaje {
+        background: #fffbeb;
+        color: #b45309;
+        border: 1px solid #fde68a;
+      }
+
+      .badge-tecnico.badge-desmontaje {
+        background: #f5f3ff;
+        color: #6d28d9;
+        border: 1px solid #ddd6fe;
+      }
+
+      .badge-tecnico.badge-ensayo {
+        background: #f0fdfa;
+        color: #0f766e;
+        border: 1px solid #99f6e4;
+      }
+
+      .resumen-horario-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .resumen-horario-pill.pill-montaje {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+      }
+
+      .resumen-horario-pill.pill-evento {
+        background: #eef2ff;
+        color: var(--primario-2);
+        border: 1px solid #c7d2fe;
+      }
+
+      .resumen-horario-pill.pill-desmontaje {
+        background: #f5f3ff;
+        color: #6d28d9;
+        border: 1px solid #ddd6fe;
+      }
+
+      .resumen-horario-pill.pill-ensayo {
+        background: #f0fdfa;
+        color: #0f766e;
+        border: 1px solid #99f6e4;
+      }
+
+      @media (max-width: 768px) {
+        .form-tecnico {
+          grid-template-columns: 1fr 1fr;
+        }
+        .campo-tecnico-fecha {
+          grid-column: 1 / -1;
+        }
+        .campo-tecnico-inicio {
+          grid-column: 1;
+        }
+        .campo-tecnico-fin {
+          grid-column: 2;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .form-tecnico {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+        .campo-tecnico-inicio,
+        .campo-tecnico-fin {
+          grid-column: 1 / -1;
+        }
+        .caja-adicional {
+          padding: 12px;
+        }
+        .caja-adicional.desactivada {
+          padding: 10px 12px;
+        }
+      }
+
+      .acciones {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 18px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .acciones .der {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
       }
     `,
   ],
@@ -567,6 +1359,7 @@ export class SolicitudFormularioComponent {
   private readonly fb = inject(FormBuilder);
 
   eventoActual: Evento | null = null;
+  private borradorActual: SolicitudCreacionPayload | null = null;
   intentoEnvio = false;
 
   @Input()
@@ -575,19 +1368,30 @@ export class SolicitudFormularioComponent {
     this.eventoActual = evento;
 
     if (evento && cambioDeEvento) {
-      this.intentoEnvio = false;
-      this.formulario.reset({
-        fecha_propuesta: evento.fecha,
-        hora_inicio_propuesta: evento.hora_inicio,
-        hora_fin_propuesta: evento.hora_fin,
-        motivo: '',
-      });
+      this.aplicarValoresIniciales();
     } else if (!evento) {
       this.intentoEnvio = false;
       this.formulario.reset({
+        nombre_propuesto: '',
+        contacto_propuesto: '',
+        telefono_propuesto: '',
+        correo_propuesto: '',
+        observaciones_propuestas: '',
         fecha_propuesta: '',
         hora_inicio_propuesta: '',
         hora_fin_propuesta: '',
+        has_montaje: false,
+        montaje_fecha: '',
+        montaje_hora_inicio: '',
+        montaje_hora_fin: '',
+        has_desmontaje: false,
+        desmontaje_fecha: '',
+        desmontaje_hora_inicio: '',
+        desmontaje_hora_fin: '',
+        has_ensayo: false,
+        ensayo_fecha: '',
+        ensayo_hora_inicio: '',
+        ensayo_hora_fin: '',
         motivo: '',
       });
     } else {
@@ -599,20 +1403,88 @@ export class SolicitudFormularioComponent {
     return this.eventoActual;
   }
 
+  @Input()
+  set borrador(valor: SolicitudCreacionPayload | null) {
+    this.borradorActual = valor;
+    if (this.eventoActual && valor && valor.evento_id === this.eventoActual.id) {
+      const info = valor.informacion_general_propuesta;
+      const tiempos = valor.tiempos_tecnicos_propuestos;
+      this.formulario.patchValue(
+        {
+          nombre_propuesto: info ? info.nombre : (this.eventoActual.nombre ?? ''),
+          contacto_propuesto: info ? info.contacto : (this.eventoActual.contacto ?? ''),
+          telefono_propuesto: info ? info.telefono : (this.eventoActual.telefono ?? ''),
+          correo_propuesto: info ? info.correo : (this.eventoActual.correo ?? ''),
+          observaciones_propuestas: info
+            ? info.observaciones
+            : (this.eventoActual.observaciones ?? ''),
+          fecha_propuesta: valor.fecha_propuesta,
+          hora_inicio_propuesta: valor.hora_inicio_propuesta,
+          hora_fin_propuesta: valor.hora_fin_propuesta,
+          has_montaje: tiempos ? Boolean(tiempos.has_montaje) : Boolean(this.eventoActual.has_montaje),
+          montaje_fecha: tiempos ? tiempos.montaje_fecha : (this.eventoActual.montaje_fecha ?? ''),
+          montaje_hora_inicio: tiempos ? tiempos.montaje_hora_inicio : (this.eventoActual.montaje_hora_inicio ?? ''),
+          montaje_hora_fin: tiempos ? tiempos.montaje_hora_fin : (this.eventoActual.montaje_hora_fin ?? ''),
+          has_desmontaje: tiempos ? Boolean(tiempos.has_desmontaje) : Boolean(this.eventoActual.has_desmontaje),
+          desmontaje_fecha: tiempos ? tiempos.desmontaje_fecha : (this.eventoActual.desmontaje_fecha ?? ''),
+          desmontaje_hora_inicio: tiempos ? tiempos.desmontaje_hora_inicio : (this.eventoActual.desmontaje_hora_inicio ?? ''),
+          desmontaje_hora_fin: tiempos ? tiempos.desmontaje_hora_fin : (this.eventoActual.desmontaje_hora_fin ?? ''),
+          has_ensayo: tiempos ? Boolean(tiempos.has_ensayo) : Boolean(this.eventoActual.has_ensayo),
+          ensayo_fecha: tiempos ? tiempos.ensayo_fecha : (this.eventoActual.ensayo_fecha ?? ''),
+          ensayo_hora_inicio: tiempos ? tiempos.ensayo_hora_inicio : (this.eventoActual.ensayo_hora_inicio ?? ''),
+          ensayo_hora_fin: tiempos ? tiempos.ensayo_hora_fin : (this.eventoActual.ensayo_hora_fin ?? ''),
+          motivo: valor.motivo,
+        },
+        { emitEvent: false }
+      );
+      this.formulario.updateValueAndValidity({ emitEvent: false });
+    }
+  }
+
+  get borrador(): SolicitudCreacionPayload | null {
+    return this.borradorActual;
+  }
+
   @Input() tienePendiente = false;
   @Input() enviando = false;
   @Input() mensajeExito = '';
   @Input() avisoRefrescoPosterior = '';
   @Input() errorEnvio = '';
 
+  @Output() continuarRevision = new EventEmitter<SolicitudCreacionPayload>();
   @Output() enviarSolicitud = new EventEmitter<SolicitudCreacionPayload>();
+  @Output() solicitarVolver = new EventEmitter<boolean>();
+  @Output() solicitarDescartar = new EventEmitter<boolean>();
   @Output() recargarSolicitudes = new EventEmitter<void>();
 
   readonly formulario = this.fb.group(
     {
+      nombre_propuesto: [
+        '',
+        [Validators.required, textoObligatorioUnicodeValidator(120, 'nombreVacio')],
+      ],
+      contacto_propuesto: [
+        '',
+        [Validators.required, textoObligatorioUnicodeValidator(80, 'contactoVacio')],
+      ],
+      telefono_propuesto: ['', [textoOpcionalUnicodeValidator(25)]],
+      correo_propuesto: ['', [correoOpcionalValidator(80)]],
+      observaciones_propuestas: ['', [textoOpcionalUnicodeValidator(300)]],
       fecha_propuesta: ['', [Validators.required, fechaFormatoValidoValidator()]],
       hora_inicio_propuesta: ['', [Validators.required, horaFormatoYRangoValidator()]],
       hora_fin_propuesta: ['', [Validators.required, horaFormatoYRangoValidator()]],
+      has_montaje: [false],
+      montaje_fecha: ['', [fechaFormatoValidoValidator()]],
+      montaje_hora_inicio: ['', [horaFormatoYRangoValidator()]],
+      montaje_hora_fin: ['', [horaFormatoYRangoValidator()]],
+      has_desmontaje: [false],
+      desmontaje_fecha: ['', [fechaFormatoValidoValidator()]],
+      desmontaje_hora_inicio: ['', [horaFormatoYRangoValidator()]],
+      desmontaje_hora_fin: ['', [horaFormatoYRangoValidator()]],
+      has_ensayo: [false],
+      ensayo_fecha: ['', [fechaFormatoValidoValidator()]],
+      ensayo_hora_inicio: ['', [horaFormatoYRangoValidator()]],
+      ensayo_hora_fin: ['', [horaFormatoYRangoValidator()]],
       motivo: ['', [Validators.required, motivoUnicodeValidator(400)]],
     },
     {
@@ -620,8 +1492,450 @@ export class SolicitudFormularioComponent {
     }
   );
 
+  private aplicarValoresIniciales(): void {
+    if (!this.eventoActual) {
+      return;
+    }
+    this.intentoEnvio = false;
+    if (this.borradorActual && this.borradorActual.evento_id === this.eventoActual.id) {
+      const info = this.borradorActual.informacion_general_propuesta;
+      const tiempos = this.borradorActual.tiempos_tecnicos_propuestos;
+      this.formulario.reset({
+        nombre_propuesto: info ? info.nombre : (this.eventoActual.nombre ?? ''),
+        contacto_propuesto: info ? info.contacto : (this.eventoActual.contacto ?? ''),
+        telefono_propuesto: info ? info.telefono : (this.eventoActual.telefono ?? ''),
+        correo_propuesto: info ? info.correo : (this.eventoActual.correo ?? ''),
+        observaciones_propuestas: info
+          ? info.observaciones
+          : (this.eventoActual.observaciones ?? ''),
+        fecha_propuesta: this.borradorActual.fecha_propuesta,
+        hora_inicio_propuesta: this.borradorActual.hora_inicio_propuesta,
+        hora_fin_propuesta: this.borradorActual.hora_fin_propuesta,
+        has_montaje: tiempos ? Boolean(tiempos.has_montaje) : Boolean(this.eventoActual.has_montaje),
+        montaje_fecha: tiempos ? tiempos.montaje_fecha : (this.eventoActual.montaje_fecha ?? ''),
+        montaje_hora_inicio: tiempos ? tiempos.montaje_hora_inicio : (this.eventoActual.montaje_hora_inicio ?? ''),
+        montaje_hora_fin: tiempos ? tiempos.montaje_hora_fin : (this.eventoActual.montaje_hora_fin ?? ''),
+        has_desmontaje: tiempos ? Boolean(tiempos.has_desmontaje) : Boolean(this.eventoActual.has_desmontaje),
+        desmontaje_fecha: tiempos ? tiempos.desmontaje_fecha : (this.eventoActual.desmontaje_fecha ?? ''),
+        desmontaje_hora_inicio: tiempos ? tiempos.desmontaje_hora_inicio : (this.eventoActual.desmontaje_hora_inicio ?? ''),
+        desmontaje_hora_fin: tiempos ? tiempos.desmontaje_hora_fin : (this.eventoActual.desmontaje_hora_fin ?? ''),
+        has_ensayo: tiempos ? Boolean(tiempos.has_ensayo) : Boolean(this.eventoActual.has_ensayo),
+        ensayo_fecha: tiempos ? tiempos.ensayo_fecha : (this.eventoActual.ensayo_fecha ?? ''),
+        ensayo_hora_inicio: tiempos ? tiempos.ensayo_hora_inicio : (this.eventoActual.ensayo_hora_inicio ?? ''),
+        ensayo_hora_fin: tiempos ? tiempos.ensayo_hora_fin : (this.eventoActual.ensayo_hora_fin ?? ''),
+        motivo: this.borradorActual.motivo,
+      });
+    } else {
+      this.formulario.reset({
+        nombre_propuesto: this.eventoActual.nombre ?? '',
+        contacto_propuesto: this.eventoActual.contacto ?? '',
+        telefono_propuesto: this.eventoActual.telefono ?? '',
+        correo_propuesto: this.eventoActual.correo ?? '',
+        observaciones_propuestas: this.eventoActual.observaciones ?? '',
+        fecha_propuesta: this.eventoActual.fecha,
+        hora_inicio_propuesta: this.eventoActual.hora_inicio,
+        hora_fin_propuesta: this.eventoActual.hora_fin,
+        has_montaje: Boolean(this.eventoActual.has_montaje),
+        montaje_fecha: this.eventoActual.montaje_fecha ?? '',
+        montaje_hora_inicio: this.eventoActual.montaje_hora_inicio ?? '',
+        montaje_hora_fin: this.eventoActual.montaje_hora_fin ?? '',
+        has_desmontaje: Boolean(this.eventoActual.has_desmontaje),
+        desmontaje_fecha: this.eventoActual.desmontaje_fecha ?? '',
+        desmontaje_hora_inicio: this.eventoActual.desmontaje_hora_inicio ?? '',
+        desmontaje_hora_fin: this.eventoActual.desmontaje_hora_fin ?? '',
+        has_ensayo: Boolean(this.eventoActual.has_ensayo),
+        ensayo_fecha: this.eventoActual.ensayo_fecha ?? '',
+        ensayo_hora_inicio: this.eventoActual.ensayo_hora_inicio ?? '',
+        ensayo_hora_fin: this.eventoActual.ensayo_hora_fin ?? '',
+        motivo: '',
+      });
+    }
+  }
+
+  restaurarValoresOriginales(): void {
+    if (!this.eventoActual) {
+      return;
+    }
+    this.intentoEnvio = false;
+    this.borradorActual = null;
+    this.formulario.reset({
+      nombre_propuesto: this.eventoActual.nombre ?? '',
+      contacto_propuesto: this.eventoActual.contacto ?? '',
+      telefono_propuesto: this.eventoActual.telefono ?? '',
+      correo_propuesto: this.eventoActual.correo ?? '',
+      observaciones_propuestas: this.eventoActual.observaciones ?? '',
+      fecha_propuesta: this.eventoActual.fecha,
+      hora_inicio_propuesta: this.eventoActual.hora_inicio,
+      hora_fin_propuesta: this.eventoActual.hora_fin,
+      has_montaje: Boolean(this.eventoActual.has_montaje),
+      montaje_fecha: this.eventoActual.montaje_fecha ?? '',
+      montaje_hora_inicio: this.eventoActual.montaje_hora_inicio ?? '',
+      montaje_hora_fin: this.eventoActual.montaje_hora_fin ?? '',
+      has_desmontaje: Boolean(this.eventoActual.has_desmontaje),
+      desmontaje_fecha: this.eventoActual.desmontaje_fecha ?? '',
+      desmontaje_hora_inicio: this.eventoActual.desmontaje_hora_inicio ?? '',
+      desmontaje_hora_fin: this.eventoActual.desmontaje_hora_fin ?? '',
+      has_ensayo: Boolean(this.eventoActual.has_ensayo),
+      ensayo_fecha: this.eventoActual.ensayo_fecha ?? '',
+      ensayo_hora_inicio: this.eventoActual.ensayo_hora_inicio ?? '',
+      ensayo_hora_fin: this.eventoActual.ensayo_hora_fin ?? '',
+      motivo: '',
+    });
+  }
+
+  alCambiarMontaje(): void {
+    const activo = Boolean(this.formulario.get('has_montaje')?.value);
+    if (!activo) {
+      return;
+    }
+    const fechaActual = (this.formulario.get('fecha_propuesta')?.value ?? this.eventoActual?.fecha ?? '').trim();
+    if (!this.formulario.get('montaje_fecha')?.value && fechaActual) {
+      this.formulario.patchValue({ montaje_fecha: fechaActual });
+    }
+    const evInicio = (this.formulario.get('hora_inicio_propuesta')?.value ?? this.eventoActual?.hora_inicio ?? '').trim();
+    const mIni = (this.formulario.get('montaje_hora_inicio')?.value ?? '').trim();
+    const mFin = (this.formulario.get('montaje_hora_fin')?.value ?? '').trim();
+    if (!mIni && !mFin && evInicio && /^\d{2}:\d{2}$/.test(evInicio)) {
+      const [h, m] = evInicio.split(':').map(Number);
+      const minTotal = h * 60 + m;
+      const defaultIniMin = Math.max(6 * 60, minTotal - 60);
+      const defaultFinMin = minTotal;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const iniStr = `${pad(Math.floor(defaultIniMin / 60))}:${pad(defaultIniMin % 60)}`;
+      const finStr = `${pad(Math.floor(defaultFinMin / 60))}:${pad(defaultFinMin % 60)}`;
+      this.formulario.patchValue({
+        montaje_hora_inicio: iniStr,
+        montaje_hora_fin: finStr,
+      });
+    }
+  }
+
+  alCambiarDesmontaje(): void {
+    const activo = Boolean(this.formulario.get('has_desmontaje')?.value);
+    if (!activo) {
+      return;
+    }
+    const fechaActual = (this.formulario.get('fecha_propuesta')?.value ?? this.eventoActual?.fecha ?? '').trim();
+    if (!this.formulario.get('desmontaje_fecha')?.value && fechaActual) {
+      this.formulario.patchValue({ desmontaje_fecha: fechaActual });
+    }
+    const evFin = (this.formulario.get('hora_fin_propuesta')?.value ?? this.eventoActual?.hora_fin ?? '').trim();
+    const dIni = (this.formulario.get('desmontaje_hora_inicio')?.value ?? '').trim();
+    const dFin = (this.formulario.get('desmontaje_hora_fin')?.value ?? '').trim();
+    if (!dIni && !dFin && evFin && /^\d{2}:\d{2}$/.test(evFin)) {
+      const [h, m] = evFin.split(':').map(Number);
+      const minTotal = h * 60 + m;
+      const defaultIniMin = minTotal;
+      const defaultFinMin = Math.min(22 * 60, minTotal + 60);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const iniStr = `${pad(Math.floor(defaultIniMin / 60))}:${pad(defaultIniMin % 60)}`;
+      const finStr = `${pad(Math.floor(defaultFinMin / 60))}:${pad(defaultFinMin % 60)}`;
+      this.formulario.patchValue({
+        desmontaje_hora_inicio: iniStr,
+        desmontaje_hora_fin: finStr,
+      });
+    }
+  }
+
+  alCambiarEnsayo(): void {
+    const activo = Boolean(this.formulario.get('has_ensayo')?.value);
+    if (!activo) {
+      return;
+    }
+    const fechaActual = (this.formulario.get('fecha_propuesta')?.value ?? this.eventoActual?.fecha ?? '').trim();
+    if (!this.formulario.get('ensayo_fecha')?.value && fechaActual) {
+      this.formulario.patchValue({ ensayo_fecha: fechaActual });
+    }
+    const eIni = (this.formulario.get('ensayo_hora_inicio')?.value ?? '').trim();
+    const eFin = (this.formulario.get('ensayo_hora_fin')?.value ?? '').trim();
+    if (!eIni && !eFin) {
+      const mIni = (this.formulario.get('montaje_hora_inicio')?.value ?? '').trim();
+      const evIni = (this.formulario.get('hora_inicio_propuesta')?.value ?? this.eventoActual?.hora_inicio ?? '').trim();
+      const referencia = mIni && this.formulario.get('has_montaje')?.value ? mIni : evIni;
+      if (referencia && /^\d{2}:\d{2}$/.test(referencia)) {
+        const [h, m] = referencia.split(':').map(Number);
+        const minRef = h * 60 + m;
+        const defaultIniMin = Math.max(6 * 60, minRef - 60);
+        const defaultFinMin = minRef;
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const iniStr = `${pad(Math.floor(defaultIniMin / 60))}:${pad(defaultIniMin % 60)}`;
+        const finStr = `${pad(Math.floor(defaultFinMin / 60))}:${pad(defaultFinMin % 60)}`;
+        this.formulario.patchValue({
+          ensayo_hora_inicio: iniStr,
+          ensayo_hora_fin: finStr,
+        });
+      }
+    }
+  }
+
+  get nombreModificado(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('nombre_propuesto')?.value ?? '').trim();
+    const orig = (this.eventoActual.nombre ?? '').trim();
+    return actual !== orig;
+  }
+
+  get contactoModificado(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('contacto_propuesto')?.value ?? '').trim();
+    const orig = (this.eventoActual.contacto ?? '').trim();
+    return actual !== orig;
+  }
+
+  get telefonoModificado(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('telefono_propuesto')?.value ?? '').trim();
+    const orig = (this.eventoActual.telefono ?? '').trim();
+    return actual !== orig;
+  }
+
+  get correoModificado(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('correo_propuesto')?.value ?? '').trim();
+    const orig = (this.eventoActual.correo ?? '').trim();
+    return actual !== orig;
+  }
+
+  get observacionesModificadas(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('observaciones_propuestas')?.value ?? '').trim();
+    const orig = (this.eventoActual.observaciones ?? '').trim();
+    return actual !== orig;
+  }
+
+  get fechaModificada(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('fecha_propuesta')?.value ?? '').trim();
+    return actual !== '' && actual !== this.eventoActual.fecha;
+  }
+
+  get horaInicioModificada(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('hora_inicio_propuesta')?.value ?? '').trim();
+    return actual !== '' && actual !== this.eventoActual.hora_inicio;
+  }
+
+  get horaFinModificada(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const actual = (this.formulario.get('hora_fin_propuesta')?.value ?? '').trim();
+    return actual !== '' && actual !== this.eventoActual.hora_fin;
+  }
+
+  get montajeFechaModificada(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_montaje')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('montaje_fecha')?.value ?? '').trim();
+    const orig = (this.eventoActual.montaje_fecha ?? '').trim();
+    return Boolean(this.eventoActual.has_montaje && act !== '' && act !== orig);
+  }
+
+  get montajeInicioModificado(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_montaje')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('montaje_hora_inicio')?.value ?? '').trim();
+    const orig = (this.eventoActual.montaje_hora_inicio ?? '').trim();
+    return Boolean(this.eventoActual.has_montaje && act !== '' && act !== orig);
+  }
+
+  get montajeFinModificado(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_montaje')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('montaje_hora_fin')?.value ?? '').trim();
+    const orig = (this.eventoActual.montaje_hora_fin ?? '').trim();
+    return Boolean(this.eventoActual.has_montaje && act !== '' && act !== orig);
+  }
+
+  get desmontajeFechaModificada(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_desmontaje')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('desmontaje_fecha')?.value ?? '').trim();
+    const orig = (this.eventoActual.desmontaje_fecha ?? '').trim();
+    return Boolean(this.eventoActual.has_desmontaje && act !== '' && act !== orig);
+  }
+
+  get desmontajeInicioModificado(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_desmontaje')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('desmontaje_hora_inicio')?.value ?? '').trim();
+    const orig = (this.eventoActual.desmontaje_hora_inicio ?? '').trim();
+    return Boolean(this.eventoActual.has_desmontaje && act !== '' && act !== orig);
+  }
+
+  get desmontajeFinModificado(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_desmontaje')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('desmontaje_hora_fin')?.value ?? '').trim();
+    const orig = (this.eventoActual.desmontaje_hora_fin ?? '').trim();
+    return Boolean(this.eventoActual.has_desmontaje && act !== '' && act !== orig);
+  }
+
+  get ensayoFechaModificada(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_ensayo')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('ensayo_fecha')?.value ?? '').trim();
+    const orig = (this.eventoActual.ensayo_fecha ?? '').trim();
+    return Boolean(this.eventoActual.has_ensayo && act !== '' && act !== orig);
+  }
+
+  get ensayoInicioModificado(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_ensayo')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('ensayo_hora_inicio')?.value ?? '').trim();
+    const orig = (this.eventoActual.ensayo_hora_inicio ?? '').trim();
+    return Boolean(this.eventoActual.has_ensayo && act !== '' && act !== orig);
+  }
+
+  get ensayoFinModificado(): boolean {
+    if (!this.eventoActual || !this.formulario.get('has_ensayo')?.value) {
+      return false;
+    }
+    const act = (this.formulario.get('ensayo_hora_fin')?.value ?? '').trim();
+    const orig = (this.eventoActual.ensayo_hora_fin ?? '').trim();
+    return Boolean(this.eventoActual.has_ensayo && act !== '' && act !== orig);
+  }
+
+  get ensayoAgregadoModificado(): boolean {
+    return Boolean(this.formulario.get('has_ensayo')?.value && !this.eventoActual?.has_ensayo);
+  }
+
+  get longitudNombreUnicode(): number {
+    return contarRunasUnicode(this.formulario.get('nombre_propuesto')?.value);
+  }
+
+  get longitudContactoUnicode(): number {
+    return contarRunasUnicode(this.formulario.get('contacto_propuesto')?.value);
+  }
+
+  get longitudTelefonoUnicode(): number {
+    return contarRunasUnicode(this.formulario.get('telefono_propuesto')?.value);
+  }
+
+  get longitudCorreoUnicode(): number {
+    return contarRunasUnicode(this.formulario.get('correo_propuesto')?.value);
+  }
+
+  get longitudObservacionesUnicode(): number {
+    return contarRunasUnicode(this.formulario.get('observaciones_propuestas')?.value);
+  }
+
   get longitudMotivoUnicode(): number {
-    return contarRunasMotivo(this.formulario.get('motivo')?.value);
+    return contarRunasUnicode(this.formulario.get('motivo')?.value);
+  }
+
+  tieneCambiosEnBorrador(): boolean {
+    if (!this.eventoActual) {
+      return false;
+    }
+    const motivoLimpio = (this.formulario.get('motivo')?.value ?? '').trim();
+    const tieneCambioMontaje =
+      Boolean(this.formulario.get('has_montaje')?.value) !== Boolean(this.eventoActual.has_montaje) ||
+      (Boolean(this.formulario.get('has_montaje')?.value) && (
+        (this.formulario.get('montaje_fecha')?.value ?? '').trim() !== (this.eventoActual.montaje_fecha ?? '') ||
+        (this.formulario.get('montaje_hora_inicio')?.value ?? '').trim() !== (this.eventoActual.montaje_hora_inicio ?? '') ||
+        (this.formulario.get('montaje_hora_fin')?.value ?? '').trim() !== (this.eventoActual.montaje_hora_fin ?? '')
+      ));
+
+    const tieneCambioDesmontaje =
+      Boolean(this.formulario.get('has_desmontaje')?.value) !== Boolean(this.eventoActual.has_desmontaje) ||
+      (Boolean(this.formulario.get('has_desmontaje')?.value) && (
+        (this.formulario.get('desmontaje_fecha')?.value ?? '').trim() !== (this.eventoActual.desmontaje_fecha ?? '') ||
+        (this.formulario.get('desmontaje_hora_inicio')?.value ?? '').trim() !== (this.eventoActual.desmontaje_hora_inicio ?? '') ||
+        (this.formulario.get('desmontaje_hora_fin')?.value ?? '').trim() !== (this.eventoActual.desmontaje_hora_fin ?? '')
+      ));
+
+    const tieneCambioEnsayo =
+      Boolean(this.formulario.get('has_ensayo')?.value) !== Boolean(this.eventoActual.has_ensayo) ||
+      (Boolean(this.formulario.get('has_ensayo')?.value) && (
+        (this.formulario.get('ensayo_fecha')?.value ?? '').trim() !== (this.eventoActual.ensayo_fecha ?? '') ||
+        (this.formulario.get('ensayo_hora_inicio')?.value ?? '').trim() !== (this.eventoActual.ensayo_hora_inicio ?? '') ||
+        (this.formulario.get('ensayo_hora_fin')?.value ?? '').trim() !== (this.eventoActual.ensayo_hora_fin ?? '')
+      ));
+
+    return (
+      this.nombreModificado ||
+      this.contactoModificado ||
+      this.telefonoModificado ||
+      this.correoModificado ||
+      this.observacionesModificadas ||
+      this.fechaModificada ||
+      this.horaInicioModificada ||
+      this.horaFinModificada ||
+      tieneCambioMontaje ||
+      tieneCambioDesmontaje ||
+      tieneCambioEnsayo ||
+      motivoLimpio.length > 0
+    );
+  }
+
+  private calcularDuracionMinutos(ini?: string | null, fin?: string | null): string {
+    if (!ini || !fin || !/^\d{2}:\d{2}$/.test(ini) || !/^\d{2}:\d{2}$/.test(fin)) {
+      return '';
+    }
+    const [h1, m1] = ini.split(':').map(Number);
+    const [h2, m2] = fin.split(':').map(Number);
+    const minDiff = h2 * 60 + m2 - (h1 * 60 + m1);
+    if (minDiff <= 0) return '';
+    const horas = Math.floor(minDiff / 60);
+    const minutos = minDiff % 60;
+    if (horas > 0 && minutos > 0) {
+      return `${horas} h ${minutos} min`;
+    }
+    if (horas > 0) {
+      return `${horas} h`;
+    }
+    return `${minutos} min`;
+  }
+
+  obtenerDuracionPropuesta(): string {
+    return this.calcularDuracionMinutos(
+      this.formulario.get('hora_inicio_propuesta')?.value,
+      this.formulario.get('hora_fin_propuesta')?.value
+    );
+  }
+
+  obtenerDuracionMontaje(): string {
+    return this.calcularDuracionMinutos(
+      this.formulario.get('montaje_hora_inicio')?.value,
+      this.formulario.get('montaje_hora_fin')?.value
+    );
+  }
+
+  obtenerDuracionDesmontaje(): string {
+    return this.calcularDuracionMinutos(
+      this.formulario.get('desmontaje_hora_inicio')?.value,
+      this.formulario.get('desmontaje_hora_fin')?.value
+    );
+  }
+
+  obtenerDuracionEnsayo(): string {
+    return this.calcularDuracionMinutos(
+      this.formulario.get('ensayo_hora_inicio')?.value,
+      this.formulario.get('ensayo_hora_fin')?.value
+    );
   }
 
   mostrarErrorControl(nombre: string): boolean {
@@ -635,10 +1949,37 @@ export class SolicitudFormularioComponent {
   mostrarErroresGrupo(): boolean {
     return (
       this.intentoEnvio ||
+      Boolean(this.formulario.get('nombre_propuesto')?.dirty) ||
+      Boolean(this.formulario.get('contacto_propuesto')?.dirty) ||
+      Boolean(this.formulario.get('telefono_propuesto')?.dirty) ||
+      Boolean(this.formulario.get('correo_propuesto')?.dirty) ||
+      Boolean(this.formulario.get('observaciones_propuestas')?.dirty) ||
       Boolean(this.formulario.get('fecha_propuesta')?.dirty) ||
       Boolean(this.formulario.get('hora_inicio_propuesta')?.dirty) ||
-      Boolean(this.formulario.get('hora_fin_propuesta')?.dirty)
+      Boolean(this.formulario.get('hora_fin_propuesta')?.dirty) ||
+      Boolean(this.formulario.get('has_montaje')?.dirty) ||
+      Boolean(this.formulario.get('montaje_fecha')?.dirty) ||
+      Boolean(this.formulario.get('montaje_hora_inicio')?.dirty) ||
+      Boolean(this.formulario.get('montaje_hora_fin')?.dirty) ||
+      Boolean(this.formulario.get('has_desmontaje')?.dirty) ||
+      Boolean(this.formulario.get('desmontaje_fecha')?.dirty) ||
+      Boolean(this.formulario.get('desmontaje_hora_inicio')?.dirty) ||
+      Boolean(this.formulario.get('desmontaje_hora_fin')?.dirty) ||
+      Boolean(this.formulario.get('has_ensayo')?.dirty) ||
+      Boolean(this.formulario.get('ensayo_fecha')?.dirty) ||
+      Boolean(this.formulario.get('ensayo_hora_inicio')?.dirty) ||
+      Boolean(this.formulario.get('ensayo_hora_fin')?.dirty)
     );
+  }
+
+  alSolicitarVolver(): void {
+    this.solicitarVolver.emit(this.tieneCambiosEnBorrador());
+  }
+
+  alSolicitarDescartar(): void {
+    if (this.tieneCambiosEnBorrador()) {
+      this.solicitarDescartar.emit(true);
+    }
   }
 
   onSubmit(): void {
@@ -655,13 +1996,40 @@ export class SolicitudFormularioComponent {
     }
 
     const valores = this.formulario.getRawValue();
-    this.enviarSolicitud.emit({
+    const hasMontaje = Boolean(valores.has_montaje);
+    const hasDesmontaje = Boolean(valores.has_desmontaje);
+    const hasEnsayo = Boolean(valores.has_ensayo);
+
+    const payload: SolicitudCreacionPayload = {
       evento_id: this.eventoActual.id,
       motivo: (valores.motivo ?? '').trim(),
       fecha_propuesta: (valores.fecha_propuesta ?? '').trim(),
       hora_inicio_propuesta: (valores.hora_inicio_propuesta ?? '').trim(),
       hora_fin_propuesta: (valores.hora_fin_propuesta ?? '').trim(),
-    });
+      informacion_general_propuesta: {
+        nombre: (valores.nombre_propuesto ?? '').trim(),
+        contacto: (valores.contacto_propuesto ?? '').trim(),
+        telefono: (valores.telefono_propuesto ?? '').trim(),
+        correo: (valores.correo_propuesto ?? '').trim(),
+        observaciones: (valores.observaciones_propuestas ?? '').trim(),
+      },
+      tiempos_tecnicos_propuestos: {
+        has_montaje: hasMontaje,
+        montaje_fecha: hasMontaje ? (valores.montaje_fecha ?? '').trim() : '',
+        montaje_hora_inicio: hasMontaje ? (valores.montaje_hora_inicio ?? '').trim() : '',
+        montaje_hora_fin: hasMontaje ? (valores.montaje_hora_fin ?? '').trim() : '',
+        has_desmontaje: hasDesmontaje,
+        desmontaje_fecha: hasDesmontaje ? (valores.desmontaje_fecha ?? '').trim() : '',
+        desmontaje_hora_inicio: hasDesmontaje ? (valores.desmontaje_hora_inicio ?? '').trim() : '',
+        desmontaje_hora_fin: hasDesmontaje ? (valores.desmontaje_hora_fin ?? '').trim() : '',
+        has_ensayo: hasEnsayo,
+        ensayo_fecha: hasEnsayo ? (valores.ensayo_fecha ?? '').trim() : '',
+        ensayo_hora_inicio: hasEnsayo ? (valores.ensayo_hora_inicio ?? '').trim() : '',
+        ensayo_hora_fin: hasEnsayo ? (valores.ensayo_hora_fin ?? '').trim() : '',
+      },
+    };
+
+    this.continuarRevision.emit(payload);
+    this.enviarSolicitud.emit(payload);
   }
 }
-

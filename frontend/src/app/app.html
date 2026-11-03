@@ -1,69 +1,453 @@
-<div class="layout-principal">
-  <header class="cabecera-showtech">
-    <div class="contenedor cabecera-showtech__contenido">
-      <div class="marca-bloque">
-        <div class="marca-insignia" aria-hidden="true">
-          <svg viewBox="0 0 24 24" class="icono-marca">
-            <path
-              d="M12 2L2 7l10 5 10-5-10-5zm0 7.5l-6-3 6-3 6 3-6 3zm0 2.5l-10-5v10l10 5 10-5V7l-10 5z"
-              fill="currentColor"
-            />
-          </svg>
-        </div>
-        <div>
-          <span class="marca-empresa">SHOWTECH SOLUTIONS</span>
-          <h1 class="titulo-pagina">Solicitudes de modificación</h1>
-        </div>
-      </div>
-      <p class="descripcion-cabecera">
-        Consulta la programación actual de eventos y registra solicitudes de cambio de fecha u
-        horario.
-      </p>
-    </div>
+<div class="layout-portal">
+  <header class="cabecera">
+    <div class="marca">SHOWTECH <span>SOLUTIONS</span></div>
   </header>
 
-  <main class="contenedor contenido-principal">
-    <div class="rejilla-superior">
-      <app-eventos-lista
-        [eventos]="eventos()"
-        [eventoSeleccionadoId]="eventoSeleccionado()?.id ?? null"
-        [eventosConPendienteIds]="eventosConPendienteIds()"
-        [cargando]="cargandoEventos()"
-        [errorCarga]="errorEventos()"
-        (seleccionarEvento)="alSeleccionarEvento($event)"
-        (reintentar)="cargarEventos()"
-      />
-
-      <app-solicitud-formulario
-        [eventoSeleccionado]="eventoSeleccionado()"
-        [tienePendiente]="eventoSeleccionadoTienePendiente()"
-        [enviando]="enviandoSolicitud()"
-        [mensajeExito]="mensajeExito()"
-        [avisoRefrescoPosterior]="avisoRefrescoPosterior()"
-        [errorEnvio]="errorEnvio()"
-        (enviarSolicitud)="alEnviarSolicitud($event)"
-        (recargarSolicitudes)="cargarSolicitudes()"
-      />
+  <main class="contenedor-portal">
+    <div class="encabezado-vista">
+      <h1>Solicitudes de modificación</h1>
+      <p class="sub">
+        Consulta la programación actual de eventos y gestiona solicitudes de cambio de información
+        general, contacto, fecha u horario.
+      </p>
     </div>
 
-    <div class="seccion-inferior">
-      <app-solicitudes-lista
-        [solicitudes]="solicitudes()"
-        [eventos]="eventos()"
-        [cargando]="cargandoSolicitudes()"
-        [errorCarga]="errorSolicitudes()"
-        (reintentar)="cargarSolicitudes()"
-      />
-    </div>
+    <nav class="pasos" aria-label="Pasos para solicitar una modificación">
+      <button
+        type="button"
+        class="paso"
+        [class.activo]="pasoActual() === 1"
+        [class.completado]="pasoActual() > 1"
+        [attr.aria-current]="pasoActual() === 1 ? 'step' : null"
+        (click)="irAPasoDesdeBarra(1)"
+      >
+        <span class="num" aria-hidden="true">1</span>
+        <span>Eventos</span>
+      </button>
+
+      <button
+        type="button"
+        class="paso"
+        [class.activo]="pasoActual() === 2"
+        [class.completado]="pasoActual() > 2"
+        [attr.aria-current]="pasoActual() === 2 ? 'step' : null"
+        [disabled]="!puedeIrAPaso2()"
+        (click)="irAPasoDesdeBarra(2)"
+      >
+        <span class="num" aria-hidden="true">2</span>
+        <span>Proponer cambios</span>
+      </button>
+
+      <button
+        type="button"
+        class="paso"
+        [class.activo]="pasoActual() === 3"
+        [class.completado]="pasoActual() > 3"
+        [attr.aria-current]="pasoActual() === 3 ? 'step' : null"
+        [disabled]="!puedeIrAPaso3() && pasoActual() !== 2"
+        (click)="irAPasoDesdeBarra(3)"
+      >
+        <span class="num" aria-hidden="true">3</span>
+        <span>Revisar solicitud</span>
+      </button>
+
+      <button
+        type="button"
+        class="paso"
+        [class.activo]="pasoActual() === 4"
+        [attr.aria-current]="pasoActual() === 4 ? 'step' : null"
+        [disabled]="!puedeIrAPaso4()"
+        (click)="irAPasoDesdeBarra(4)"
+      >
+        <span class="num" aria-hidden="true">4</span>
+        <span>Solicitud enviada</span>
+      </button>
+    </nav>
+
+    @if (avisoRefrescoPosterior() && pasoActual() !== 4) {
+      <div class="alerta alerta-aviso alerta-global" role="status" aria-live="polite">
+        <p>{{ avisoRefrescoPosterior() }}</p>
+        <button
+          type="button"
+          class="btn btn-secundario btn-sm"
+          (click)="cargarDatosIniciales()"
+        >
+          Reintentar actualización
+        </button>
+      </div>
+    }
+
+    @switch (pasoActual()) {
+      @case (1) {
+        <section class="tarjeta seccion-paso" aria-labelledby="titulo-paso-1">
+          <app-eventos-lista
+            [eventos]="eventos()"
+            [solicitudes]="solicitudes()"
+            [eventoSeleccionadoId]="eventoSeleccionado()?.id ?? null"
+            [cargando]="cargandoEventos()"
+            [errorCarga]="errorEventos()"
+            (seleccionarEvento)="alSeleccionarEvento($event)"
+            (verSolicitud)="abrirModalDetalle($event)"
+            (reintentar)="cargarEventos()"
+          />
+
+          <app-solicitudes-lista
+            [solicitudes]="solicitudes()"
+            [eventos]="eventos()"
+            [cargando]="cargandoSolicitudes()"
+            [errorCarga]="errorSolicitudes()"
+            (verDetalle)="abrirModalDetalle($event)"
+            (reintentar)="cargarSolicitudes()"
+          />
+        </section>
+      }
+
+      @case (2) {
+        <app-solicitud-formulario
+          #formularioPaso2
+          [eventoSeleccionado]="eventoSeleccionado()"
+          [tienePendiente]="eventoSeleccionadoTienePendiente()"
+          [borrador]="borradorPropuesta()"
+          [enviando]="enviandoSolicitud()"
+          [mensajeExito]="mensajeExito()"
+          [avisoRefrescoPosterior]="avisoRefrescoPosterior()"
+          [errorEnvio]="errorEnvio()"
+          (continuarRevision)="alContinuarARevision($event)"
+          (solicitarVolver)="alIntentarVolverAEventosDesdePaso2()"
+          (solicitarDescartar)="alIntentarDescartarEnPaso2()"
+          (recargarSolicitudes)="cargarSolicitudes()"
+        />
+      }
+
+      @case (3) {
+        <section class="tarjeta seccion-paso" id="cs3" aria-labelledby="titulo-paso-3">
+          <h2 id="titulo-paso-3" tabindex="-1">3. Revisar solicitud de modificación</h2>
+
+          <div class="aviso aviso-info">
+            Revise el detalle comparativo entre los datos actuales de su evento y los cambios que enviará al equipo comercial.
+          </div>
+
+          @if (eventoSeleccionado(); as ev) {
+            @if (borradorPropuesta(); as borrador) {
+              <h3>Comparativo de cambios solicitados</h3>
+
+              <div class="comparativo-wrap" id="diffTableContainerCliente">
+                <table class="comparativo-tabla">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="th-concepto col-campo">Campo del evento</th>
+                      <th scope="col" class="th-actual col-actual">Datos actuales (vigentes)</th>
+                      <th scope="col" class="th-propuesto col-propuesto">Cambios solicitados</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of filasComparativaPaso3(); track fila.campo) {
+                      <tr [class.fila-modificada]="fila.modificado">
+                        <td class="col-campo th-concepto-m">{{ fila.campo }}</td>
+                        <td class="col-actual celda-actual">{{ fila.actual }}</td>
+                        <td class="col-propuesto celda-propuesta">
+                          {{ fila.propuesto }}
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Motivo Registrado -->
+              <div class="motivo-box-review" id="motivoReviewBox">
+                <strong>Motivo de la solicitud:</strong>
+                <p id="motivoReviewTexto">{{ borrador.motivo }}</p>
+              </div>
+
+              <p class="mensaje-reserva" role="note">
+                Al enviar la solicitud, quedará pendiente de revisión. Tu reserva actual se
+                mantendrá sin cambios.
+              </p>
+
+              @if (errorEnvio()) {
+                <div class="alerta alerta-error" role="alert" aria-live="assertive">
+                  <p>{{ errorEnvio() }}</p>
+                  @if (eventoSeleccionadoTienePendiente()) {
+                    <div class="acciones-alerta">
+                      <button
+                        type="button"
+                        class="btn btn-sec btn-sm"
+                        (click)="volverAMisEventos()"
+                      >
+                        Volver a eventos
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Acciones del Paso 3 -->
+              <div class="acciones">
+                <button
+                  type="button"
+                  class="btn btn-sec"
+                  [disabled]="enviandoSolicitud()"
+                  (click)="alModificarPropuestaDesdeRevision()"
+                >
+                  &larr; Volver a editar
+                </button>
+
+                <div class="der">
+                  <button
+                    type="button"
+                    class="btn btn-ok"
+                    id="btnEnviarSolicitud"
+                    [disabled]="enviandoSolicitud() || eventoSeleccionadoTienePendiente()"
+                    (click)="alEnviarSolicitud(borrador)"
+                  >
+                    @if (enviandoSolicitud()) {
+                      <span class="spinner-boton" aria-hidden="true"></span>
+                      <span>Enviando solicitud...</span>
+                    } @else {
+                      <span>Enviar solicitud de modificación &rarr;</span>
+                    }
+                  </button>
+                </div>
+              </div>
+            }
+          }
+        </section>
+      }
+
+      @case (4) {
+        <section class="tarjeta seccion-paso" id="cs4" aria-labelledby="titulo-paso-4">
+          @if (solicitudConfirmada(); as sol) {
+            <div class="confirmacion-exito-box">
+              <svg
+                class="icono-check-grande"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+
+              <div style="margin-bottom: 8px;">
+                <span class="badge-solicitud-pendiente">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                  Pendiente de revisión
+                </span>
+              </div>
+
+              <h3 id="titulo-paso-4" tabindex="-1">¡Tu solicitud fue registrada con éxito!</h3>
+              <p class="mensaje-confirmacion-texto">
+                Tu solicitud fue registrada. El asesor comercial revisará tu propuesta. Tu reserva actual se mantiene sin cambios hasta que se confirme la modificación.
+              </p>
+
+              <div class="confirmacion-meta-grid" id="confirmacionMetaGrid">
+                <div class="confirmacion-meta-item">
+                  <small>Código de solicitud</small>
+                  <strong>#{{ sol.id }}</strong>
+                </div>
+                <div class="confirmacion-meta-item">
+                  <small>Evento</small>
+                  <strong>ID: {{ sol.evento_id }} - {{ obtenerNombreSnapshotOriginal(sol) }}</strong>
+                </div>
+                <div class="confirmacion-meta-item">
+                  <small>Fecha y hora de envío</small>
+                  <strong>{{ sol.fecha_creacion }}</strong>
+                </div>
+                <div class="confirmacion-meta-item">
+                  <small>Estado</small>
+                  <span class="badge-solicitud-pendiente">{{ sol.estado }}</span>
+                </div>
+                <div class="confirmacion-meta-item" style="grid-column: 1 / -1;">
+                  <small>Motivo indicado</small>
+                  <span>{{ sol.motivo }}</span>
+                </div>
+              </div>
+            </div>
+
+            @if (avisoRefrescoPosterior()) {
+              <div class="alerta alerta-aviso" role="status" aria-live="polite">
+                <p>{{ avisoRefrescoPosterior() }}</p>
+                <button
+                  type="button"
+                  class="btn btn-sec btn-sm"
+                  (click)="cargarDatosIniciales()"
+                >
+                  Reintentar actualización
+                </button>
+              </div>
+            }
+
+            <div class="acciones">
+              <button
+                type="button"
+                class="btn btn-sec"
+                id="btnVerDetalleSolicitudConfirmada"
+                (click)="abrirModalDetalle(sol)"
+              >
+                Ver detalle de la solicitud
+              </button>
+
+              <div class="der">
+                <button
+                  type="button"
+                  class="btn btn-primario"
+                  (click)="volverAMisEventos()"
+                >
+                  Volver a mis eventos &rarr;
+                </button>
+              </div>
+            </div>
+          }
+        </section>
+      }
+    }
   </main>
 
-  <footer class="pie-pagina">
-    <div class="contenedor pie-pagina__contenido">
-      <span>SHOWTECH SOLUTIONS — Gestor de Eventos</span>
-      <span class="nota-memoria">
-        Nota técnica: el backend opera actualmente con almacenamiento en memoria; las solicitudes
-        registradas se reinician al detener el servidor.
-      </span>
+  @if (solicitudDetalleModal(); as solModal) {
+    <div
+      class="modal-backdrop"
+      role="presentation"
+      (click)="cerrarModalDetalle()"
+    >
+      <div
+        #modalDetalleRef
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="titulo-modal-detalle"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="modal-header">
+          <div>
+            <span class="modal-subtitulo">Solicitud #{{ solModal.id }}</span>
+            <h3 id="titulo-modal-detalle">Detalle de la solicitud de modificación</h3>
+          </div>
+          <span class="etiqueta etiqueta-pendiente">{{ solModal.estado }}</span>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-grid">
+            <div class="modal-dato">
+              <span class="modal-dato__label">Evento (según snapshot original)</span>
+              <strong>{{ obtenerNombreSnapshotOriginal(solModal) }}</strong>
+              <span class="modal-dato__meta">ID del evento: {{ solModal.evento_id }}</span>
+            </div>
+            <div class="modal-dato">
+              <span class="modal-dato__label">Espacio</span>
+              <strong>{{ obtenerEspacioSnapshot(solModal) }}</strong>
+              <span class="modal-dato__meta">Registrada: {{ solModal.fecha_creacion }}</span>
+            </div>
+          </div>
+
+          <div class="comparativo-wrap">
+            <table class="comparativo-tabla">
+              <thead>
+                <tr>
+                  <th scope="col" class="th-concepto col-campo">Campo del evento</th>
+                  <th scope="col" class="th-actual col-actual">Datos actuales (vigentes)</th>
+                  <th scope="col" class="th-propuesto col-propuesto">Cambios solicitados</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of filasComparativaModal(solModal); track fila.campo) {
+                  <tr [class.fila-modificada]="fila.modificado">
+                    <td class="col-campo th-concepto-m">{{ fila.campo }}</td>
+                    <td class="col-actual celda-actual">{{ fila.actual }}</td>
+                    <td class="col-propuesto celda-propuesta">
+                      {{ fila.propuesto }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <div class="modal-motivo">
+            <span class="modal-dato__label">Motivo de la solicitud</span>
+            <div class="motivo-box-review">{{ solModal.motivo }}</div>
+          </div>
+
+          <p class="mensaje-reserva modal-nota">
+            La solicitud está pendiente de revisión. Tu reserva actual se mantiene sin cambios.
+          </p>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            id="btn-cerrar-modal-detalle"
+            type="button"
+            class="btn btn-sec"
+            (click)="cerrarModalDetalle()"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
-  </footer>
+  }
+
+  @if (modalDescartarAbierto()) {
+    <div
+      class="modal-backdrop"
+      role="presentation"
+      (click)="cerrarModalDescartar()"
+    >
+      <div
+        #modalDescartarRef
+        class="modal-card modal-card--compacto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="titulo-modal-descartar"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="modal-header">
+          <h3 id="titulo-modal-descartar">¿Descartar los cambios propuestos?</h3>
+        </div>
+
+        <div class="modal-body">
+          <p class="modal-texto">
+            Tienes cambios sin enviar en el formulario. Si continúas, se restaurarán todos los
+            valores originales del evento seleccionado.
+          </p>
+        </div>
+
+        <div class="modal-footer modal-footer--doble">
+          <button
+            id="btn-cancelar-descarte"
+            type="button"
+            class="btn btn-secundario"
+            (click)="cerrarModalDescartar()"
+          >
+            Seguir editando
+          </button>
+          <button
+            id="btn-confirmar-descarte"
+            type="button"
+            class="btn btn-peligro"
+            (click)="confirmarDescarteCambios()"
+          >
+            Sí, descartar cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

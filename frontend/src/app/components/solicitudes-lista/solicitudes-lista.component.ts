@@ -5,61 +5,58 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
   selector: 'app-solicitudes-lista',
   standalone: true,
   template: `
-    <section class="panel-seccion" aria-labelledby="titulo-solicitudes-registradas">
-      <div class="seccion-encabezado">
-        <div>
-          <h2 id="titulo-solicitudes-registradas" class="seccion-titulo">
-            Solicitudes registradas
-          </h2>
-          <p class="seccion-subtitulo">
-            Historial de solicitudes de modificación recibidas durante la ejecución actual del
-            servidor.
-          </p>
-        </div>
+    <div class="seccion-solicitudes" id="seccionSolicitudes">
+      <div class="solicitudes-cabecera">
+        <h3>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          Solicitudes de modificación
+        </h3>
         <button
           type="button"
-          class="btn-secundario"
+          class="btn btn-sec btn-chico"
           (click)="reintentar.emit()"
           [disabled]="cargando"
         >
-          <svg class="icono-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M4 12a8 8 0 0 1 14.93-4H15v2h6V4h-2v2.35A10 10 0 1 0 22 12h-2a8 8 0 0 1-16 0z"
-              fill="currentColor"
-            />
-          </svg>
-          Actualizar listado
+          Actualizar solicitudes
         </button>
       </div>
 
       @if (cargando) {
-        <div class="estado-bloque" role="status" aria-live="polite">
-          <span class="indicador-carga" aria-hidden="true"></span>
+        <div class="aviso aviso-info estado-carga" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
           <span>Consultando solicitudes registradas...</span>
         </div>
       } @else if (errorCarga) {
-        <div class="alerta alerta-error" role="alert">
-          <div class="alerta-contenido">
+        <div class="aviso aviso-error alerta-flex" role="alert">
+          <div>
             <strong>Error al consultar las solicitudes</strong>
-            <p>{{ errorCarga }}</p>
+            <p style="margin-top: 4px;">{{ errorCarga }}</p>
           </div>
-          <button type="button" class="btn-reintentar" (click)="reintentar.emit()">
+          <button type="button" class="btn btn-sec btn-chico" (click)="reintentar.emit()">
             Reintentar
           </button>
         </div>
       } @else if (solicitudes.length === 0) {
-        <div class="estado-vacio" role="status">
-          <svg class="icono-vacio" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H5V5h14v14zm-2-6H7v-2h10v2z"
-              fill="currentColor"
-            />
-          </svg>
-          <p class="texto-vacio">Todavía no hay solicitudes registradas</p>
-        </div>
+        <p class="ayuda texto-vacio" role="status">Todavía no hay solicitudes registradas</p>
       } @else {
-        <!-- Vista de tabla para escritorio -->
-        <div class="tabla-contenedor vista-escritorio">
+        <!-- Tabla en escritorio -->
+        <div class="tabla-wrap vista-escritorio">
           <table class="tabla-solicitudes">
             <thead>
               <tr>
@@ -69,18 +66,24 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
                 <th scope="col">Datos propuestos</th>
                 <th scope="col">Motivo</th>
                 <th scope="col">Estado</th>
+                <th scope="col" class="num-der">Acción</th>
               </tr>
             </thead>
             <tbody>
               @for (sol of solicitudes; track sol.id) {
                 <tr>
-                  <td class="celda-id">#{{ sol.id }}</td>
                   <td>
-                    <strong class="nombre-evento">{{ obtenerNombreEvento(sol.evento_id) }}</strong>
-                    <span class="subtexto-evento">Evento ID: {{ sol.evento_id }}</span>
+                    <span class="badge-solicitud-codigo">#{{ sol.id }}</span>
+                  </td>
+                  <td class="celda-evento">
+                    <strong>{{ obtenerNombreEventoSolicitud(sol) }}</strong>
+                    <small class="subtexto-evento">Evento ID: {{ sol.evento_id }}</small>
                   </td>
                   <td>
                     <div class="bloque-datos">
+                      @if (sol.datos_originales.contacto) {
+                        <span><strong>Contacto:</strong> {{ sol.datos_originales.contacto }}</span>
+                      }
                       <span><strong>Fecha:</strong> {{ sol.datos_originales.fecha }}</span>
                       <span>
                         <strong>Horario:</strong>
@@ -93,6 +96,12 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
                   </td>
                   <td>
                     <div class="bloque-datos bloque-datos--propuesto">
+                      @if (sol.datos_propuestos.nombre && sol.datos_propuestos.nombre !== sol.datos_originales.nombre) {
+                        <span><strong>Nombre:</strong> {{ sol.datos_propuestos.nombre }}</span>
+                      }
+                      @if (sol.datos_propuestos.contacto) {
+                        <span><strong>Contacto:</strong> {{ sol.datos_propuestos.contacto }}</span>
+                      }
                       <span><strong>Fecha:</strong> {{ sol.datos_propuestos.fecha }}</span>
                       <span>
                         <strong>Horario:</strong>
@@ -105,7 +114,16 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
                   </td>
                   <td class="celda-motivo">{{ sol.motivo }}</td>
                   <td>
-                    <span class="insignia-pendiente">{{ sol.estado }}</span>
+                    <span class="badge-solicitud-pendiente">{{ sol.estado }}</span>
+                  </td>
+                  <td class="num-der">
+                    <button
+                      type="button"
+                      class="btn btn-sec btn-chico"
+                      (click)="verDetalle.emit(sol)"
+                    >
+                      Ver detalle
+                    </button>
                   </td>
                 </tr>
               }
@@ -113,23 +131,23 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
           </table>
         </div>
 
-        <!-- Vista de tarjetas para móvil -->
-        <div class="tarjetas-movil vista-movil">
+        <!-- Tarjetas en móvil -->
+        <div class="tarjetas-solicitudes-movil vista-movil">
           @for (sol of solicitudes; track sol.id) {
-            <article class="tarjeta-solicitud">
-              <div class="tarjeta-solicitud__cabecera">
-                <span class="celda-id">Solicitud #{{ sol.id }}</span>
-                <span class="insignia-pendiente">{{ sol.estado }}</span>
+            <article class="tarjeta-solicitud-movil">
+              <div class="tarjeta-solicitud-movil__cabecera">
+                <span class="badge-solicitud-codigo">Solicitud #{{ sol.id }}</span>
+                <span class="badge-solicitud-pendiente">{{ sol.estado }}</span>
               </div>
 
-              <h3 class="tarjeta-solicitud__evento">
-                {{ obtenerNombreEvento(sol.evento_id) }}
-                <span class="subtexto-evento">(Evento #{{ sol.evento_id }})</span>
-              </h3>
+              <h4 class="tarjeta-solicitud-movil__evento">
+                {{ obtenerNombreEventoSolicitud(sol) }}
+                <small>(Evento ID: {{ sol.evento_id }})</small>
+              </h4>
 
-              <div class="tarjeta-solicitud__comparativa">
+              <div class="tarjeta-solicitud-movil__comparativa">
                 <div class="caja-horario">
-                  <span class="caja-horario__etiqueta">Datos originales</span>
+                  <small class="caja-horario__titulo">Datos originales</small>
                   <span>{{ sol.datos_originales.fecha }}</span>
                   <span class="rango-horario"
                     >{{ sol.datos_originales.hora_inicio }} -
@@ -137,7 +155,7 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
                   >
                 </div>
                 <div class="caja-horario caja-horario--propuesto">
-                  <span class="caja-horario__etiqueta">Datos propuestos</span>
+                  <small class="caja-horario__titulo">Datos propuestos</small>
                   <span>{{ sol.datos_propuestos.fecha }}</span>
                   <span class="rango-horario"
                     >{{ sol.datos_propuestos.hora_inicio }} -
@@ -146,93 +164,214 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
                 </div>
               </div>
 
-              <div class="tarjeta-solicitud__motivo">
-                <strong>Motivo:</strong>
-                <p>{{ sol.motivo }}</p>
+              <p class="tarjeta-solicitud-movil__motivo">
+                <strong>Motivo:</strong> {{ sol.motivo }}
+              </p>
+
+              <div class="tarjeta-solicitud-movil__pie">
+                <button
+                  type="button"
+                  class="btn btn-sec btn-chico"
+                  (click)="verDetalle.emit(sol)"
+                >
+                  Ver detalle
+                </button>
               </div>
             </article>
           }
         </div>
       }
-    </section>
+    </div>
   `,
   styles: [
     `
-      .panel-seccion {
-        background: var(--st-surface);
-        border: 1px solid var(--st-border);
-        border-radius: 10px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(19, 38, 74, 0.05);
+      .seccion-solicitudes {
+        margin-top: 24px;
+        border-top: 1px solid var(--borde);
+        padding-top: 20px;
       }
 
-      .seccion-encabezado {
+      .solicitudes-cabecera {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
-        gap: 1rem;
-        margin-bottom: 1.25rem;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+
+      .solicitudes-cabecera h3 {
+        font-size: 16px !important;
+        color: var(--primario) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .texto-vacio {
+        margin-top: 8px;
+        font-size: 13.5px;
+      }
+
+      .tabla-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--borde);
+        border-radius: 8px;
+      }
+
+      .tabla-solicitudes {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+      }
+
+      .tabla-solicitudes th {
+        background: var(--primario);
+        color: var(--blanco);
+        text-align: left;
+        padding: 10px 12px;
+        font-weight: normal;
+        white-space: nowrap;
+        font-size: 13px;
+      }
+
+      .tabla-solicitudes td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--borde);
+        vertical-align: middle;
+      }
+
+      .tabla-solicitudes tr:hover td {
+        background: var(--suave);
+      }
+
+      .num-der {
+        text-align: right;
+      }
+
+      .celda-evento strong {
+        display: block;
+        color: var(--primario);
+      }
+
+      .subtexto-evento {
+        display: block;
+        font-size: 11.5px;
+        color: var(--gris);
+      }
+
+      .bloque-datos {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 12.5px;
+      }
+
+      .bloque-datos--propuesto {
+        color: var(--primario-2);
+      }
+
+      .rango-horario {
+        white-space: nowrap;
+      }
+
+      .celda-motivo {
+        max-width: 260px;
+        word-break: break-word;
+      }
+
+      .vista-movil {
+        display: none;
+      }
+
+      .tarjetas-solicitudes-movil {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .tarjeta-solicitud-movil {
+        border: 1px solid var(--borde);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--blanco);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .tarjeta-solicitud-movil__cabecera {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
         flex-wrap: wrap;
       }
 
-      .seccion-titulo {
+      .tarjeta-solicitud-movil__evento {
+        font-size: 14.5px;
+        color: var(--primario);
         margin: 0;
-        font-size: 1.25rem;
-        color: var(--st-navy);
       }
 
-      .seccion-subtitulo {
-        margin: 0.25rem 0 0;
-        font-size: 0.92rem;
-        color: var(--st-text-muted);
+      .tarjeta-solicitud-movil__evento small {
+        font-weight: normal;
+        color: var(--gris);
+        font-size: 12px;
       }
 
-      .btn-secundario,
-      .btn-reintentar {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.48rem 0.85rem;
+      .tarjeta-solicitud-movil__comparativa {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .caja-horario {
+        background: var(--fondo);
+        padding: 8px 10px;
         border-radius: 6px;
-        border: 1px solid var(--st-blue);
-        background: #ffffff;
-        color: var(--st-blue);
-        font-weight: 700;
-        font-size: 0.86rem;
-        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 12.5px;
       }
 
-      .btn-secundario:hover:not(:disabled),
-      .btn-reintentar:hover:not(:disabled) {
-        background: #f0f5fc;
+      .caja-horario--propuesto {
+        background: #fffdf5;
+        border: 1px solid #f6d17b;
       }
 
-      .btn-secundario:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
+      .caja-horario__titulo {
+        font-size: 11px;
+        font-weight: bold;
+        color: var(--primario);
+        text-transform: uppercase;
       }
 
-      .icono-svg {
-        width: 16px;
-        height: 16px;
+      .tarjeta-solicitud-movil__motivo {
+        font-size: 13px;
+        word-break: break-word;
+        margin: 0;
       }
 
-      .estado-bloque {
+      .tarjeta-solicitud-movil__pie {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .estado-carga {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        padding: 1.2rem;
-        background: #f8faff;
-        border-radius: 8px;
-        color: var(--st-navy);
-        font-weight: 600;
+        gap: 10px;
       }
 
-      .indicador-carga {
-        width: 18px;
-        height: 18px;
-        border: 3px solid #d0dcf0;
-        border-top-color: var(--st-blue);
+      .spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #c5d1e8;
+        border-top-color: var(--primario-2);
         border-radius: 50%;
         animation: girar 0.8s linear infinite;
       }
@@ -243,192 +382,12 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
         }
       }
 
-      .alerta {
+      .alerta-flex {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 1rem;
-        padding: 1rem;
-        border-radius: 8px;
+        gap: 12px;
         flex-wrap: wrap;
-      }
-
-      .alerta-error {
-        background: var(--st-danger-bg);
-        border: 1px solid #fecdca;
-        color: var(--st-danger);
-      }
-
-      .alerta-contenido p {
-        margin: 0.25rem 0 0;
-        font-size: 0.9rem;
-      }
-
-      .estado-vacio {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 2.2rem 1rem;
-        border: 1px dashed var(--st-border);
-        border-radius: 8px;
-        background: #fafcff;
-        color: var(--st-text-muted);
-      }
-
-      .icono-vacio {
-        width: 32px;
-        height: 32px;
-        color: var(--st-blue);
-        margin-bottom: 0.5rem;
-      }
-
-      .texto-vacio {
-        margin: 0;
-        font-weight: 700;
-        color: var(--st-navy);
-      }
-
-      .tabla-contenedor {
-        overflow-x: auto;
-      }
-
-      .tabla-solicitudes {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.9rem;
-      }
-
-      .tabla-solicitudes th {
-        background: var(--st-navy);
-        color: #ffffff;
-        text-align: left;
-        padding: 0.75rem 0.9rem;
-        font-size: 0.82rem;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-      }
-
-      .tabla-solicitudes td {
-        padding: 0.85rem 0.9rem;
-        border-bottom: 1px solid var(--st-border);
-        vertical-align: top;
-      }
-
-      .celda-id {
-        font-weight: 700;
-        color: var(--st-navy);
-        white-space: nowrap;
-      }
-
-      .nombre-evento {
-        display: block;
-        color: var(--st-navy);
-      }
-
-      .subtexto-evento {
-        display: block;
-        font-size: 0.8rem;
-        color: var(--st-text-muted);
-      }
-
-      .bloque-datos {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-        font-size: 0.85rem;
-      }
-
-      .bloque-datos--propuesto {
-        color: var(--st-blue);
-      }
-
-      .rango-horario {
-        white-space: nowrap;
-      }
-
-      .celda-motivo {
-        max-width: 320px;
-        word-break: break-word;
-      }
-
-      .insignia-pendiente {
-        display: inline-block;
-        padding: 0.25rem 0.65rem;
-        border-radius: 999px;
-        background: var(--st-warning-bg);
-        border: 1px solid var(--st-gold);
-        color: var(--st-warning-text);
-        font-size: 0.78rem;
-        font-weight: 700;
-        white-space: nowrap;
-      }
-
-      .vista-movil {
-        display: none;
-      }
-
-      .tarjetas-movil {
-        gap: 1rem;
-      }
-
-      .tarjeta-solicitud {
-        border: 1px solid var(--st-border);
-        border-radius: 8px;
-        padding: 1rem;
-        background: #ffffff;
-      }
-
-      .tarjeta-solicitud__cabecera {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
-      }
-
-      .tarjeta-solicitud__evento {
-        margin: 0 0 0.75rem;
-        font-size: 1rem;
-        color: var(--st-navy);
-      }
-
-      .tarjeta-solicitud__comparativa {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.65rem;
-        margin-bottom: 0.75rem;
-      }
-
-      .caja-horario {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-        padding: 0.6rem;
-        border-radius: 6px;
-        background: #f6f8fc;
-        font-size: 0.84rem;
-      }
-
-      .caja-horario--propuesto {
-        background: #fff9eb;
-        border: 1px solid #f5d488;
-      }
-
-      .caja-horario__etiqueta {
-        font-size: 0.74rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: var(--st-navy);
-      }
-
-      .tarjeta-solicitud__motivo {
-        font-size: 0.88rem;
-      }
-
-      .tarjeta-solicitud__motivo p {
-        margin: 0.25rem 0 0;
-        word-break: break-word;
       }
 
       @media (max-width: 768px) {
@@ -437,7 +396,17 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
         }
 
         .vista-movil {
-          display: grid;
+          display: flex;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .tarjeta-solicitud-movil__comparativa {
+          grid-template-columns: 1fr;
+        }
+
+        .tarjeta-solicitud-movil__pie .btn {
+          width: 100%;
         }
       }
     `,
@@ -449,11 +418,18 @@ export class SolicitudesListaComponent {
   @Input() cargando = false;
   @Input() errorCarga = '';
 
+  @Output() verDetalle = new EventEmitter<Solicitud>();
   @Output() reintentar = new EventEmitter<void>();
+
+  obtenerNombreEventoSolicitud(sol: Solicitud): string {
+    if (sol.datos_originales?.nombre) {
+      return sol.datos_originales.nombre;
+    }
+    return this.obtenerNombreEvento(sol.evento_id);
+  }
 
   obtenerNombreEvento(eventoId: number): string {
     const encontrado = this.eventos.find((ev) => ev.id === eventoId);
     return encontrado ? encontrado.nombre : `Evento #${eventoId}`;
   }
 }
-

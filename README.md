@@ -162,6 +162,13 @@ Para detener el servidor, presiona `Ctrl + C` en la terminal.
 
 ### C. Iniciar y verificar el frontend Angular (`http://localhost:4200`)
 
+El frontend implementa el recorrido del portal en **cuatro pasos** conectado a la API real (`GET /api/eventos`, `GET /api/solicitudes` y `POST /api/solicitudes`), mostrando una sección principal visible por vez:
+
+1. **Paso 1 — Eventos**: Tarjetas horizontales con el identificador numérico real de cada evento, espacio, fecha y horario confirmado, botón `"Solicitar modificación"`, bloqueo automático cuando ya existe una solicitud en estado `"Pendiente de revisión"` y listado inferior de `"Solicitudes de modificación"` (tabla en escritorio y tarjetas en móvil) con acceso al modal accesible de detalle.
+2. **Paso 2 — Proponer cambios**: Resumen en solo lectura del evento seleccionado (ID, nombre y espacio), edición de `Fecha propuesta`, `Hora de inicio propuesta`, `Hora de fin propuesta` y `Motivo de la solicitud` con validaciones reactivas (`YYYY-MM-DD`, `HH:mm` entre `06:00` y `22:00`, inicio anterior al fin, máximo 400 caracteres Unicode y al menos un cambio respecto al original), insignia `"Modificado"` por campo y modal de confirmación antes de descartar un borrador editado.
+3. **Paso 3 — Revisar solicitud**: Tabla comparativa entre los valores actuales confirmados y los valores propuestos, visualización del motivo y envío mediante `POST /api/solicitudes` con bloqueo de doble envío y conservación del borrador en caso de fallo o conflicto `409`.
+4. **Paso 4 — Solicitud enviada**: Pantalla accesible tras recibir `201 Created`, mostrando los datos reales devueltos por el servidor en estado `"Pendiente de revisión"`, acceso al detalle completo y retorno al listado de eventos.
+
 En otra terminal PowerShell dentro de la subcarpeta `frontend/` (con el backend Go ejecutándose en `127.0.0.1:8081`):
 
 ```powershell
@@ -263,8 +270,12 @@ try {
 
 ---
 
-## 7. Alcance y Trabajo Pendiente
+## 7. Alcance, Compatibilidad y Trabajo Pendiente
 
+- **Compatibilidad de snapshots y registros**:
+  - Las estructuras de snapshots `datos_originales` y `datos_propuestos` contienen la información general del evento (`nombre`, `espacio`, `contacto`, `telefono`, `correo`, `observaciones`) junto con fecha y horario.
+  - Para solicitudes históricas o creadas sin datos de contacto, la interfaz presenta `"Dato no disponible en este registro"`.
+  - Para campos opcionales (`telefono`, `correo`, `observaciones`) que hayan sido explícitamente vaciados o no provistos en registros vigentes, la interfaz presenta `"Sin especificar"`.
 - **Persistencia en memoria volátil**: Los datos se reinician al detener el proceso. La integración con PostgreSQL y la definición entre ORM o SQL directo se abordarán en una siguiente etapa.
 - **Formato de `fecha_creacion`**: Se conserva temporalmente el formato `"YYYY-MM-DD HH:MM:SS"` para mantener el contrato JSON actual; su estandarización y zona horaria se definirán junto con el esquema de base de datos.
-- **Operaciones de ciclo de vida y seguridad**: Aún no están implementados la autenticación, autorización ni los flujos de retiro, aprobación o rechazo de solicitudes.
+- **Operaciones de ciclo de vida, propiedad y seguridad**: Aún no están implementados la autenticación, el filtrado por propietario de eventos/solicitudes (por lo que la interfaz presenta el catálogo general de `"Eventos"` y `"Solicitudes de modificación"` sin simular cuentas de usuario) ni los flujos de retiro, aprobación o rechazo de solicitudes.

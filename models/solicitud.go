@@ -1,33 +1,98 @@
 package models
 
-// DatosHorario agrupa la fecha y rango horario para registrar snapshots
-type DatosHorario struct {
-	Fecha      string `json:"fecha"`
-	HoraInicio string `json:"hora_inicio"`
-	HoraFin    string `json:"hora_fin"`
+// InformacionGeneralPropuestaDTO agrupa los datos generales y de contacto propuestos en POST /solicitudes.
+// Si el bloque se omite en el JSON de entrada (nil), el servicio conserva los valores originales del evento
+// para mantener la compatibilidad con peticiones anteriores que solo envían fecha y horario.
+// Si el bloque se incluye, se trata como una propuesta completa: permite vaciar los campos opcionales
+// (telefono, correo, observaciones) con "" y exige que los campos obligatorios (nombre, contacto) no estén vacíos.
+type InformacionGeneralPropuestaDTO struct {
+	Nombre        string `json:"nombre"`
+	Contacto      string `json:"contacto"`
+	Telefono      string `json:"telefono"`
+	Correo        string `json:"correo"`
+	Observaciones string `json:"observaciones"`
 }
 
-// SolicitudCreacionDTO representa la estructura del JSON recibido en POST /solicitudes
+// TiemposTecnicosPropuestosDTO agrupa los tiempos técnicos propuestos (montaje, desmontaje y ensayo).
+type TiemposTecnicosPropuestosDTO struct {
+	HasMontaje           bool   `json:"has_montaje"`
+	MontajeFecha         string `json:"montaje_fecha"`
+	MontajeHoraInicio    string `json:"montaje_hora_inicio"`
+	MontajeHoraFin       string `json:"montaje_hora_fin"`
+	HasDesmontaje        bool   `json:"has_desmontaje"`
+	DesmontajeFecha      string `json:"desmontaje_fecha"`
+	DesmontajeHoraInicio string `json:"desmontaje_hora_inicio"`
+	DesmontajeHoraFin    string `json:"desmontaje_hora_fin"`
+	HasEnsayo            bool   `json:"has_ensayo"`
+	EnsayoFecha          string `json:"ensayo_fecha"`
+	EnsayoHoraInicio     string `json:"ensayo_hora_inicio"`
+	EnsayoHoraFin        string `json:"ensayo_hora_fin"`
+}
+
+// DatosHorario agrupa el snapshot completo de información general, contacto, fecha, horario
+// y tiempos técnicos de un evento (tanto para datos_originales como para datos_propuestos).
+type DatosHorario struct {
+	Nombre               string `json:"nombre"`
+	Espacio              string `json:"espacio"`
+	Contacto             string `json:"contacto"`
+	Telefono             string `json:"telefono"`
+	Correo               string `json:"correo"`
+	Observaciones        string `json:"observaciones"`
+	Fecha                string `json:"fecha"`
+	HoraInicio           string `json:"hora_inicio"`
+	HoraFin              string `json:"hora_fin"`
+	HasMontaje           bool   `json:"has_montaje"`
+	MontajeFecha         string `json:"montaje_fecha"`
+	MontajeHoraInicio    string `json:"montaje_hora_inicio"`
+	MontajeHoraFin       string `json:"montaje_hora_fin"`
+	HasDesmontaje        bool   `json:"has_desmontaje"`
+	DesmontajeFecha      string `json:"desmontaje_fecha"`
+	DesmontajeHoraInicio string `json:"desmontaje_hora_inicio"`
+	DesmontajeHoraFin    string `json:"desmontaje_hora_fin"`
+	HasEnsayo            bool   `json:"has_ensayo"`
+	EnsayoFecha          string `json:"ensayo_fecha"`
+	EnsayoHoraInicio     string `json:"ensayo_hora_inicio"`
+	EnsayoHoraFin        string `json:"ensayo_hora_fin"`
+}
+
+// SolicitudCreacionDTO representa la estructura del JSON recibido en POST /solicitudes.
 type SolicitudCreacionDTO struct {
-	EventoID            uint   `json:"evento_id" binding:"required"`
-	Motivo              string `json:"motivo" binding:"required"`
-	FechaPropuesta      string `json:"fecha_propuesta" binding:"required"`
-	HoraInicioPropuesta string `json:"hora_inicio_propuesta" binding:"required"`
-	HoraFinPropuesta    string `json:"hora_fin_propuesta" binding:"required"`
+	EventoID                    uint                            `json:"evento_id" binding:"required"`
+	Motivo                      string                          `json:"motivo" binding:"required"`
+	FechaPropuesta              string                          `json:"fecha_propuesta" binding:"required"`
+	HoraInicioPropuesta         string                          `json:"hora_inicio_propuesta" binding:"required"`
+	HoraFinPropuesta            string                          `json:"hora_fin_propuesta" binding:"required"`
+	InformacionGeneralPropuesta *InformacionGeneralPropuestaDTO `json:"informacion_general_propuesta,omitempty"`
+	TiemposTecnicosPropuestos   *TiemposTecnicosPropuestosDTO   `json:"tiempos_tecnicos_propuestos,omitempty"`
+	// Campos directos opcionales para máxima interoperabilidad
+	HasMontaje           *bool  `json:"has_montaje,omitempty"`
+	MontajeFecha         string `json:"montaje_fecha,omitempty"`
+	MontajeHoraInicio    string `json:"montaje_hora_inicio,omitempty"`
+	MontajeHoraFin       string `json:"montaje_hora_fin,omitempty"`
+	HasDesmontaje        *bool  `json:"has_desmontaje,omitempty"`
+	DesmontajeFecha      string `json:"desmontaje_fecha,omitempty"`
+	DesmontajeHoraInicio string `json:"desmontaje_hora_inicio,omitempty"`
+	DesmontajeHoraFin    string `json:"desmontaje_hora_fin,omitempty"`
+	HasEnsayo            *bool  `json:"has_ensayo,omitempty"`
+	EnsayoFecha          string `json:"ensayo_fecha,omitempty"`
+	EnsayoHoraInicio     string `json:"ensayo_hora_inicio,omitempty"`
+	EnsayoHoraFin        string `json:"ensayo_hora_fin,omitempty"`
 }
 
 // EstadoPendienteRevision es el estado inicial asignado a toda solicitud recién registrada.
 const EstadoPendienteRevision = "Pendiente de revisión"
 
-// Solicitud representa el registro de una solicitud de modificación de evento
+// Solicitud representa el registro de una solicitud de modificación de evento.
 type Solicitud struct {
-	ID                  uint   `json:"id"`
-	EventoID            uint   `json:"evento_id"`
-	Motivo              string `json:"motivo"`
-	FechaPropuesta      string `json:"fecha_propuesta"`
-	HoraInicioPropuesta string `json:"hora_inicio_propuesta"`
-	HoraFinPropuesta    string `json:"hora_fin_propuesta"`
-	Estado              string `json:"estado"` // "Pendiente de revisión"
+	ID                          uint                           `json:"id"`
+	EventoID                    uint                           `json:"evento_id"`
+	Motivo                      string                         `json:"motivo"`
+	FechaPropuesta              string                         `json:"fecha_propuesta"`
+	HoraInicioPropuesta         string                         `json:"hora_inicio_propuesta"`
+	HoraFinPropuesta            string                         `json:"hora_fin_propuesta"`
+	InformacionGeneralPropuesta InformacionGeneralPropuestaDTO `json:"informacion_general_propuesta"`
+	TiemposTecnicosPropuestos   *TiemposTecnicosPropuestosDTO  `json:"tiempos_tecnicos_propuestos,omitempty"`
+	Estado                      string                         `json:"estado"` // "Pendiente de revisión"
 	// FechaCreacion conserva por ahora el formato "YYYY-MM-DD HH:MM:SS" en el contrato JSON actual.
 	// Su formato (p. ej. RFC3339 / TIMESTAMPTZ) y el manejo explícito de zona horaria se revisarán
 	// cuando se implemente la persistencia definitiva en PostgreSQL.

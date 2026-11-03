@@ -20,7 +20,7 @@ describe('EventosApiService', () => {
     httpMock.verify();
   });
 
-  it('debe consultar GET /api/eventos', () => {
+  it('debe consultar GET /api/eventos incluyendo datos de contacto y observaciones', () => {
     const eventosDemo = [
       {
         id: 1,
@@ -30,12 +30,17 @@ describe('EventosApiService', () => {
         hora_inicio: '09:00',
         hora_fin: '13:00',
         estado: 'Confirmado',
+        contacto: 'María Rodríguez',
+        telefono: '998 765 432',
+        correo: 'm.rodriguez@demo-showtech.test',
+        observaciones: 'Disposición de silletería para 200 personas.',
       },
     ];
 
     service.obtenerEventos().subscribe((res) => {
       expect(res.length).toBe(1);
       expect(res[0].nombre).toBe('Lanzamiento Corporativo Showtech 2026');
+      expect(res[0].contacto).toBe('María Rodríguez');
     });
 
     const req = httpMock.expectOne('/api/eventos');
@@ -43,19 +48,28 @@ describe('EventosApiService', () => {
     req.flush(eventosDemo);
   });
 
-  it('debe enviar POST /api/solicitudes con el contrato esperado', () => {
+  it('debe enviar POST /api/solicitudes con el bloque informacion_general_propuesta y snapshots completos', () => {
     const payload: SolicitudCreacionPayload = {
       evento_id: 1,
-      motivo: 'Cambio de horario por montaje técnico',
+      motivo: 'Cambio de contacto y horario por montaje técnico',
       fecha_propuesta: '2026-11-18',
       hora_inicio_propuesta: '10:00',
       hora_fin_propuesta: '14:00',
+      informacion_general_propuesta: {
+        nombre: 'Lanzamiento Corporativo Showtech 2026',
+        contacto: 'Lucía Fernández',
+        telefono: '',
+        correo: 'l.fernandez@demo-showtech.test',
+        observaciones: '',
+      },
     };
 
     service.crearSolicitud(payload).subscribe((res) => {
       expect(res.mensaje).toBe('Solicitud registrada exitosamente.');
       expect(res.solicitud.id).toBe(1);
       expect(res.solicitud.estado).toBe('Pendiente de revisión');
+      expect(res.solicitud.datos_propuestos.contacto).toBe('Lucía Fernández');
+      expect(res.solicitud.datos_propuestos.telefono).toBe('');
     });
 
     const req = httpMock.expectOne('/api/solicitudes');
@@ -69,11 +83,23 @@ describe('EventosApiService', () => {
         estado: 'Pendiente de revisión',
         fecha_creacion: '2026-11-02 12:00:00',
         datos_originales: {
+          nombre: 'Lanzamiento Corporativo Showtech 2026',
+          espacio: 'Auditorio Principal A',
+          contacto: 'María Rodríguez',
+          telefono: '998 765 432',
+          correo: 'm.rodriguez@demo-showtech.test',
+          observaciones: 'Disposición de silletería para 200 personas.',
           fecha: '2026-11-15',
           hora_inicio: '09:00',
           hora_fin: '13:00',
         },
         datos_propuestos: {
+          nombre: 'Lanzamiento Corporativo Showtech 2026',
+          espacio: 'Auditorio Principal A',
+          contacto: 'Lucía Fernández',
+          telefono: '',
+          correo: 'l.fernandez@demo-showtech.test',
+          observaciones: '',
           fecha: '2026-11-18',
           hora_inicio: '10:00',
           hora_fin: '14:00',
@@ -112,4 +138,3 @@ describe('EventosApiService', () => {
     expect(msg500).not.toContain('detalle interno sensible');
   });
 });
-

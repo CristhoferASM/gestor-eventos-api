@@ -31,29 +31,62 @@ func NewEmptyMemoryStore() *Store {
 	}
 }
 
-// NewMemoryStore inicializa el almacenamiento con dos eventos iniciales de SHOWTECH SOLUTIONS
+// NewMemoryStore inicializa el almacenamiento con dos eventos iniciales de SHOWTECH SOLUTIONS.
+// Los datos de contacto, teléfono, correo y observaciones son datos ficticios de prueba para desarrollo.
 func NewMemoryStore() *Store {
 	s := NewEmptyMemoryStore()
 
-	// Dos eventos iniciales de demostración
+	// Dos eventos iniciales de demostración (datos de contacto, observaciones y tiempos técnicos para desarrollo)
 	s.eventos[1] = models.Evento{
-		ID:         1,
-		Nombre:     "Lanzamiento Corporativo Showtech 2026",
-		Espacio:    "Auditorio Principal A",
-		Fecha:      "2026-11-15",
-		HoraInicio: "09:00",
-		HoraFin:    "13:00",
-		Estado:     "Confirmado",
+		ID:                   1,
+		Nombre:               "Lanzamiento Corporativo Showtech 2026",
+		Espacio:              "Auditorio Principal A",
+		Fecha:                "2026-11-15",
+		HoraInicio:           "09:00",
+		HoraFin:              "13:00",
+		Estado:               "Confirmado",
+		Contacto:             "María Rodríguez",
+		Telefono:             "998 765 432",
+		Correo:               "m.rodriguez@demo-showtech.test",
+		Observaciones:        "Disposición de silletería para 200 personas, atril central y 2 micrófonos inalámbricos.",
+		HasMontaje:           true,
+		MontajeFecha:         "2026-11-15",
+		MontajeHoraInicio:    "08:00",
+		MontajeHoraFin:       "09:00",
+		HasDesmontaje:        true,
+		DesmontajeFecha:      "2026-11-15",
+		DesmontajeHoraInicio: "13:00",
+		DesmontajeHoraFin:    "14:00",
+		HasEnsayo:            false,
+		EnsayoFecha:          "",
+		EnsayoHoraInicio:     "",
+		EnsayoHoraFin:        "",
 	}
 
 	s.eventos[2] = models.Evento{
-		ID:         2,
-		Nombre:     "Taller de Producción Escénica y Luces",
-		Espacio:    "Sala de Capacitación B",
-		Fecha:      "2026-11-20",
-		HoraInicio: "14:00",
-		HoraFin:    "18:00",
-		Estado:     "Confirmado",
+		ID:                   2,
+		Nombre:               "Taller de Producción Escénica y Luces",
+		Espacio:              "Sala de Capacitación B",
+		Fecha:                "2026-11-20",
+		HoraInicio:           "14:00",
+		HoraFin:              "18:00",
+		Estado:               "Confirmado",
+		Contacto:             "Carlos Duarte",
+		Telefono:             "997 654 321",
+		Correo:               "c.duarte@demo-showtech.test",
+		Observaciones:        "Proyección multimedia activa, consola de iluminación DMX y mesa con 4 micrófonos.",
+		HasMontaje:           false,
+		MontajeFecha:         "",
+		MontajeHoraInicio:    "",
+		MontajeHoraFin:       "",
+		HasDesmontaje:        false,
+		DesmontajeFecha:      "",
+		DesmontajeHoraInicio: "",
+		DesmontajeHoraFin:    "",
+		HasEnsayo:            false,
+		EnsayoFecha:          "",
+		EnsayoHoraInicio:     "",
+		EnsayoHoraFin:        "",
 	}
 
 	return s

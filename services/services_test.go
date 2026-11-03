@@ -70,6 +70,9 @@ func TestEventoServiceSinHTTP(t *testing.T) {
 	if ev.ID != 1 {
 		t.Errorf("se esperaba ID 1, se obtuvo %d", ev.ID)
 	}
+	if ev.Contacto == "" || ev.Telefono == "" || ev.Correo == "" || ev.Observaciones == "" {
+		t.Errorf("se esperaban datos de contacto y observaciones precargados en el evento 1: %+v", ev)
+	}
 
 	// ID cero debe rechazarse como dato inválido
 	_, err = svc.ObtenerEventoPorID(ctx, 0)
@@ -84,7 +87,7 @@ func TestEventoServiceSinHTTP(t *testing.T) {
 	}
 }
 
-func TestSolicitudServiceRelojInyectadoYSnapshots(t *testing.T) {
+func TestSolicitudServiceRelojInyectadoYSnapshotsCompatibilidad(t *testing.T) {
 	ctx := context.Background()
 	store := storage.NewMemoryStore()
 	instanteFijo := time.Date(2026, 10, 30, 15, 30, 45, 0, time.UTC)
@@ -97,6 +100,7 @@ func TestSolicitudServiceRelojInyectadoYSnapshots(t *testing.T) {
 		t.Fatalf("no se pudo obtener el evento 1: %v", err)
 	}
 
+	// Petición anterior sin el bloque informacion_general_propuesta
 	creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
 		EventoID:            1,
 		Motivo:              "  Cambio por logística técnica  ",
@@ -121,20 +125,50 @@ func TestSolicitudServiceRelojInyectadoYSnapshots(t *testing.T) {
 		t.Errorf("se esperaba fecha_creacion '2026-10-30 15:30:45', se obtuvo %q", creada.FechaCreacion)
 	}
 
-	// Verificar snapshots originales y propuestos
-	if creada.DatosOriginales != (models.DatosHorario{
-		Fecha:      eventoAntes.Fecha,
-		HoraInicio: eventoAntes.HoraInicio,
-		HoraFin:    eventoAntes.HoraFin,
-	}) {
-		t.Errorf("snapshot de datos_originales no coincide: %+v", creada.DatosOriginales)
+	// Verificar snapshots originales y propuestos completos conservando los datos generales originales
+	esperadoOrig := models.DatosHorario{
+		Nombre:               eventoAntes.Nombre,
+		Espacio:              eventoAntes.Espacio,
+		Contacto:             eventoAntes.Contacto,
+		Telefono:             eventoAntes.Telefono,
+		Correo:               eventoAntes.Correo,
+		Observaciones:        eventoAntes.Observaciones,
+		Fecha:                eventoAntes.Fecha,
+		HoraInicio:           eventoAntes.HoraInicio,
+		HoraFin:              eventoAntes.HoraFin,
+		HasMontaje:           eventoAntes.HasMontaje,
+		MontajeFecha:         eventoAntes.MontajeFecha,
+		MontajeHoraInicio:    eventoAntes.MontajeHoraInicio,
+		MontajeHoraFin:       eventoAntes.MontajeHoraFin,
+		HasDesmontaje:        eventoAntes.HasDesmontaje,
+		DesmontajeFecha:      eventoAntes.DesmontajeFecha,
+		DesmontajeHoraInicio: eventoAntes.DesmontajeHoraInicio,
+		DesmontajeHoraFin:    eventoAntes.DesmontajeHoraFin,
+		HasEnsayo:            eventoAntes.HasEnsayo,
+		EnsayoFecha:          eventoAntes.EnsayoFecha,
+		EnsayoHoraInicio:     eventoAntes.EnsayoHoraInicio,
+		EnsayoHoraFin:        eventoAntes.EnsayoHoraFin,
 	}
-	if creada.DatosPropuestos != (models.DatosHorario{
-		Fecha:      "2026-11-19",
-		HoraInicio: "06:00",
-		HoraFin:    "22:00",
-	}) {
-		t.Errorf("snapshot de datos_propuestos no coincide: %+v", creada.DatosPropuestos)
+	if creada.DatosOriginales != esperadoOrig {
+		t.Errorf("snapshot de datos_originales no coincide: %+v vs %+v", creada.DatosOriginales, esperadoOrig)
+	}
+
+	esperadoProp := esperadoOrig
+	esperadoProp.Fecha = "2026-11-19"
+	esperadoProp.HoraInicio = "06:00"
+	esperadoProp.HoraFin = "22:00"
+	esperadoProp.HasMontaje = false
+	esperadoProp.MontajeFecha = ""
+	esperadoProp.MontajeHoraInicio = ""
+	esperadoProp.MontajeHoraFin = ""
+	esperadoProp.HasDesmontaje = false
+	esperadoProp.DesmontajeFecha = ""
+	desmontajeHoraInicio := ""
+	desmontajeHoraFin := ""
+	esperadoProp.DesmontajeHoraInicio = desmontajeHoraInicio
+	esperadoProp.DesmontajeHoraFin = desmontajeHoraFin
+	if creada.DatosPropuestos != esperadoProp {
+		t.Errorf("snapshot de datos_propuestos no coincide: %+v vs %+v", creada.DatosPropuestos, esperadoProp)
 	}
 
 	// Verificar que el evento original permanece intacto
@@ -145,6 +179,242 @@ func TestSolicitudServiceRelojInyectadoYSnapshots(t *testing.T) {
 	if eventoDespues != eventoAntes {
 		t.Errorf("el evento original fue modificado: antes=%+v, despues=%+v", eventoAntes, eventoDespues)
 	}
+}
+
+func TestSolicitudServiceInformacionGeneralYContacto(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("CambioUnicamenteEnNombreSinCambiarHorario", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:            1,
+			Motivo:              "Actualización de denominación oficial del evento",
+			FechaPropuesta:      ev.Fecha,
+			HoraInicioPropuesta: ev.HoraInicio,
+			HoraFinPropuesta:    ev.HoraFin,
+			InformacionGeneralPropuesta: &models.InformacionGeneralPropuestaDTO{
+				Nombre:        "  Congreso Internacional Showtech 2026  ",
+				Contacto:      ev.Contacto,
+				Telefono:      ev.Telefono,
+				Correo:        ev.Correo,
+				Observaciones: ev.Observaciones,
+			},
+		})
+		if err != nil {
+			t.Fatalf("se esperaba éxito al cambiar solo el nombre, se obtuvo: %v", err)
+		}
+		if creada.DatosOriginales.Nombre != ev.Nombre {
+			t.Errorf("nombre original incorrecto en snapshot: %q", creada.DatosOriginales.Nombre)
+		}
+		if creada.DatosPropuestos.Nombre != "Congreso Internacional Showtech 2026" {
+			t.Errorf("nombre propuesto incorrecto en snapshot: %q", creada.DatosPropuestos.Nombre)
+		}
+	})
+
+	t.Run("CambioUnicamenteEnContactoYVaciadoDeOpcionales", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:            1,
+			Motivo:              "Cambio de coordinador y retiro de datos opcionales",
+			FechaPropuesta:      ev.Fecha,
+			HoraInicioPropuesta: ev.HoraInicio,
+			HoraFinPropuesta:    ev.HoraFin,
+			InformacionGeneralPropuesta: &models.InformacionGeneralPropuestaDTO{
+				Nombre:        ev.Nombre,
+				Contacto:      "  Lucía Fernández  ",
+				Telefono:      "   ",
+				Correo:        "",
+				Observaciones: "  ",
+			},
+		})
+		if err != nil {
+			t.Fatalf("se esperaba éxito al cambiar contacto y vaciar opcionales, se obtuvo: %v", err)
+		}
+		if creada.DatosPropuestos.Contacto != "Lucía Fernández" {
+			t.Errorf("contacto propuesto incorrecto: %q", creada.DatosPropuestos.Contacto)
+		}
+		if creada.DatosPropuestos.Telefono != "" || creada.DatosPropuestos.Correo != "" || creada.DatosPropuestos.Observaciones != "" {
+			t.Errorf("los campos opcionales debieron quedar vacíos en datos_propuestos: %+v", creada.DatosPropuestos)
+		}
+		if creada.DatosOriginales.Telefono == "" || creada.DatosOriginales.Correo == "" || creada.DatosOriginales.Observaciones == "" {
+			t.Errorf("datos_originales debe conservar los valores originales no vacíos: %+v", creada.DatosOriginales)
+		}
+
+		// Verificar que el evento original sigue intacto
+		evDespues, _ := store.ObtenerEventoPorID(ctx, 1)
+		if evDespues != ev {
+			t.Errorf("el evento original fue alterado: %+v", evDespues)
+		}
+	})
+
+	t.Run("RechazoCuandoNoCambiaNingunCampoConBloqueIncluido", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		_, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:            1,
+			Motivo:              "Sin ningún cambio efectivo",
+			FechaPropuesta:      ev.Fecha,
+			HoraInicioPropuesta: ev.HoraInicio,
+			HoraFinPropuesta:    ev.HoraFin,
+			InformacionGeneralPropuesta: &models.InformacionGeneralPropuestaDTO{
+				Nombre:        " " + ev.Nombre + " ",
+				Contacto:      " " + ev.Contacto + " ",
+				Telefono:      " " + ev.Telefono + " ",
+				Correo:        " " + ev.Correo + " ",
+				Observaciones: " " + ev.Observaciones + " ",
+			},
+		})
+		if !errors.Is(err, services.ErrDatosInvalidos) {
+			t.Fatalf("se esperaba ErrDatosInvalidos cuando no hay cambios efectivos, se obtuvo: %v", err)
+		}
+	})
+
+	t.Run("ValidacionesObligatoriosLimitesUnicodeYCorreo", func(t *testing.T) {
+		evBase := models.Evento{
+			ID:            1,
+			Nombre:        "Evento Base",
+			Espacio:       "Auditorio A",
+			Fecha:         "2026-11-15",
+			HoraInicio:    "09:00",
+			HoraFin:       "13:00",
+			Contacto:      "Contacto Base",
+			Telefono:      "999888777",
+			Correo:        "base@ejemplo.com",
+			Observaciones: "Nota inicial",
+		}
+
+		casosInvalidos := []struct {
+			nombre string
+			info   models.InformacionGeneralPropuestaDTO
+		}{
+			{
+				nombre: "Nombre vacío",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   "   ",
+					Contacto: "Ana Pérez",
+				},
+			},
+			{
+				nombre: "Nombre excede 120 runas Unicode (121)",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   strings.Repeat("á", 121),
+					Contacto: "Ana Pérez",
+				},
+			},
+			{
+				nombre: "Contacto vacío",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   "Evento Válido",
+					Contacto: "   ",
+				},
+			},
+			{
+				nombre: "Contacto excede 80 runas Unicode (81)",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   "Evento Válido",
+					Contacto: strings.Repeat("é", 81),
+				},
+			},
+			{
+				nombre: "Teléfono excede 25 runas Unicode (26)",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   "Evento Válido",
+					Contacto: "Ana Pérez",
+					Telefono: strings.Repeat("9", 26),
+				},
+			},
+			{
+				nombre: "Correo excede 80 runas Unicode (81)",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   "Evento Válido",
+					Contacto: "Ana Pérez",
+					Correo:   strings.Repeat("a", 70) + "@dominio.pe", // 70 + 11 = 81
+				},
+			},
+			{
+				nombre: "Correo sin arroba",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   "Evento Válido",
+					Contacto: "Ana Pérez",
+					Correo:   "correo.sin.arroba.com",
+				},
+			},
+			{
+				nombre: "Correo sin dominio válido",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:   "Evento Válido",
+					Contacto: "Ana Pérez",
+					Correo:   "usuario@dominio",
+				},
+			},
+			{
+				nombre: "Observaciones exceden 300 runas Unicode (301)",
+				info: models.InformacionGeneralPropuestaDTO{
+					Nombre:        "Evento Válido",
+					Contacto:      "Ana Pérez",
+					Observaciones: strings.Repeat("ü", 301),
+				},
+			},
+		}
+
+		for _, tc := range casosInvalidos {
+			t.Run(tc.nombre, func(t *testing.T) {
+				store := storage.NewMemoryStore()
+				svc := services.NewSolicitudService(store, store)
+				infoCopia := tc.info
+
+				_, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+					EventoID:                    1,
+					Motivo:                      "Prueba de validación de información general",
+					FechaPropuesta:              evBase.Fecha,
+					HoraInicioPropuesta:         evBase.HoraInicio,
+					HoraFinPropuesta:            evBase.HoraFin,
+					InformacionGeneralPropuesta: &infoCopia,
+				})
+				if !errors.Is(err, services.ErrDatosInvalidos) {
+					t.Errorf("caso %q: se esperaba ErrDatosInvalidos, se obtuvo: %v", tc.nombre, err)
+				}
+			})
+		}
+
+		// Caso en los límites exactos Unicode (120, 80, 25, 80, 300) -> Válido
+		t.Run("LimitesExactosUnicodeValidos", func(t *testing.T) {
+			store := storage.NewMemoryStore()
+			svc := services.NewSolicitudService(store, store)
+
+			correo80 := strings.Repeat("a", 69) + "@dominio.pe" // 69 + 11 = 80
+			infoValida := models.InformacionGeneralPropuestaDTO{
+				Nombre:        strings.Repeat("á", 120),
+				Contacto:      strings.Repeat("é", 80),
+				Telefono:      strings.Repeat("9", 25),
+				Correo:        correo80,
+				Observaciones: strings.Repeat("ó", 300),
+			}
+
+			creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+				EventoID:                    1,
+				Motivo:                      "Prueba límites exactos Unicode",
+				FechaPropuesta:              "2026-11-15",
+				HoraInicioPropuesta:         "09:00",
+				HoraFinPropuesta:            "13:00",
+				InformacionGeneralPropuesta: &infoValida,
+			})
+			if err != nil {
+				t.Fatalf("se esperaba éxito con límites exactos Unicode, se obtuvo: %v", err)
+			}
+			if creadoLen := len([]rune(creada.DatosPropuestos.Nombre)); creadoLen != 120 {
+				t.Errorf("se esperaban 120 runas en nombre, se obtuvieron %d", creadoLen)
+			}
+		})
+	})
 }
 
 func TestSolicitudServiceFormatoEstrictoHorasYLimites(t *testing.T) {
@@ -336,3 +606,175 @@ func TestSolicitudServiceCreacionConcurrente(t *testing.T) {
 	}
 }
 
+func TestSolicitudServiceTiemposTecnicos(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("CambioUnicamenteEnMontajeValido", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		// Solo cambia el horario de montaje (de 08:00-09:00 a 07:00-09:00), todo lo demás idéntico
+		creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:            ev.ID,
+			Motivo:              "Ajuste únicamente en el horario de montaje técnico para calibrar sonido con anticipación",
+			FechaPropuesta:      ev.Fecha,
+			HoraInicioPropuesta: ev.HoraInicio,
+			HoraFinPropuesta:    ev.HoraFin,
+			TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{
+				HasMontaje:           true,
+				MontajeFecha:         ev.Fecha,
+				MontajeHoraInicio:    "07:00",
+				MontajeHoraFin:       "09:00",
+				HasDesmontaje:        ev.HasDesmontaje,
+				DesmontajeFecha:      ev.DesmontajeFecha,
+				DesmontajeHoraInicio: ev.DesmontajeHoraInicio,
+				DesmontajeHoraFin:    ev.DesmontajeHoraFin,
+				HasEnsayo:            false,
+			},
+		})
+		if err != nil {
+			t.Fatalf("se esperaba éxito al proponer cambio únicamente en montaje, error: %v", err)
+		}
+		if creada.DatosPropuestos.MontajeHoraInicio != "07:00" {
+			t.Errorf("montaje_hora_inicio esperado '07:00', obtenido '%s'", creada.DatosPropuestos.MontajeHoraInicio)
+		}
+		if creada.DatosOriginales.MontajeHoraInicio != "08:00" {
+			t.Errorf("montaje_hora_inicio original esperado '08:00', obtenido '%s'", creada.DatosOriginales.MontajeHoraInicio)
+		}
+	})
+
+	t.Run("FranjasContiguasPermitidas", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		// Ensayo: 06:30 - 07:30
+		// Montaje: 07:30 - 09:00 (contiguo con ensayo)
+		// Evento: 09:00 - 13:00 (contiguo con montaje)
+		// Desmontaje: 13:00 - 14:00 (contiguo con evento)
+		creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:            ev.ID,
+			Motivo:              "Ensayo previo y montaje contiguos sin espacios muertos",
+			FechaPropuesta:      ev.Fecha,
+			HoraInicioPropuesta: "09:00",
+			HoraFinPropuesta:    "13:00",
+			TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{
+				HasEnsayo:            true,
+				EnsayoFecha:          ev.Fecha,
+				EnsayoHoraInicio:     "06:30",
+				EnsayoHoraFin:        "07:30",
+				HasMontaje:           true,
+				MontajeFecha:         ev.Fecha,
+				MontajeHoraInicio:    "07:30",
+				MontajeHoraFin:       "09:00",
+				HasDesmontaje:        true,
+				DesmontajeFecha:      ev.Fecha,
+				DesmontajeHoraInicio: "13:00",
+				DesmontajeHoraFin:    "14:00",
+			},
+		})
+		if err != nil {
+			t.Fatalf("se esperaba éxito con franjas contiguas, error: %v", err)
+		}
+		if !creada.DatosPropuestos.HasEnsayo || creada.DatosPropuestos.EnsayoHoraInicio != "06:30" {
+			t.Errorf("datos de ensayo propuesto incorrectos: %+v", creada.DatosPropuestos)
+		}
+	})
+
+	t.Run("ValidacionesTiemposTecnicos", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		casos := []struct {
+			nombre  string
+			tiempos models.TiemposTecnicosPropuestosDTO
+			espera  string
+		}{
+			{
+				nombre: "Montaje fecha distinta al evento",
+				tiempos: models.TiemposTecnicosPropuestosDTO{
+					HasMontaje:        true,
+					MontajeFecha:      "2026-11-16",
+					MontajeHoraInicio: "08:00",
+					MontajeHoraFin:    "09:00",
+				},
+				espera: "El montaje debe realizarse en la misma fecha del evento.",
+			},
+			{
+				nombre: "Montaje finaliza después del inicio del evento",
+				tiempos: models.TiemposTecnicosPropuestosDTO{
+					HasMontaje:        true,
+					MontajeFecha:      ev.Fecha,
+					MontajeHoraInicio: "08:00",
+					MontajeHoraFin:    "09:30", // Evento empieza a 09:00
+				},
+				espera: "El montaje no puede finalizar después del inicio del evento.",
+			},
+			{
+				nombre: "Desmontaje inicia antes del fin del evento",
+				tiempos: models.TiemposTecnicosPropuestosDTO{
+					HasDesmontaje:        true,
+					DesmontajeFecha:      ev.Fecha,
+					DesmontajeHoraInicio: "12:30", // Evento termina a 13:00
+					DesmontajeHoraFin:    "14:00",
+				},
+				espera: "El desmontaje no puede iniciar antes del fin del evento.",
+			},
+			{
+				nombre: "Ensayo culmina después del inicio del evento",
+				tiempos: models.TiemposTecnicosPropuestosDTO{
+					HasEnsayo:        true,
+					EnsayoFecha:      ev.Fecha,
+					EnsayoHoraInicio: "08:30",
+					EnsayoHoraFin:    "09:30",
+				},
+				espera: "El ensayo técnico debe culminar antes de la hora de inicio del evento.",
+			},
+			{
+				nombre: "Ensayo se cruza con montaje",
+				tiempos: models.TiemposTecnicosPropuestosDTO{
+					HasMontaje:        true,
+					MontajeFecha:      ev.Fecha,
+					MontajeHoraInicio: "08:00",
+					MontajeHoraFin:    "09:00",
+					HasEnsayo:         true,
+					EnsayoFecha:       ev.Fecha,
+					EnsayoHoraInicio:  "07:30",
+					EnsayoHoraFin:     "08:30", // Se cruza con 08:00-09:00
+				},
+				espera: "El ensayo técnico no puede cruzarse con el montaje del evento.",
+			},
+			{
+				nombre: "Horario técnico fuera del límite 06:00",
+				tiempos: models.TiemposTecnicosPropuestosDTO{
+					HasMontaje:        true,
+					MontajeFecha:      ev.Fecha,
+					MontajeHoraInicio: "05:30",
+					MontajeHoraFin:    "07:00",
+				},
+				espera: "Los horarios de montaje deben estar comprendidos entre las 06:00 y las 22:00 inclusive.",
+			},
+		}
+
+		for _, tc := range casos {
+			t.Run(tc.nombre, func(t *testing.T) {
+				_, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+					EventoID:                  ev.ID,
+					Motivo:                    "Prueba de validación técnica",
+					FechaPropuesta:            ev.Fecha,
+					HoraInicioPropuesta:       ev.HoraInicio,
+					HoraFinPropuesta:          ev.HoraFin,
+					TiemposTecnicosPropuestos: &tc.tiempos,
+				})
+				if err == nil {
+					t.Fatalf("se esperaba error '%s', pero no hubo error", tc.espera)
+				}
+				if !strings.Contains(err.Error(), tc.espera) {
+					t.Errorf("error esperado contenía '%s', pero se obtuvo '%s'", tc.espera, err.Error())
+				}
+			})
+		}
+	})
+}
