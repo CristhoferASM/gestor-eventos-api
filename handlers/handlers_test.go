@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -719,7 +720,7 @@ func TestCrearYListarSolicitudConInformacionGeneralHTTP(t *testing.T) {
 
 	// 4) Verificar que el evento original sigue intacto
 	evDespues, _ := store.ObtenerEventoPorID(ctx, 1)
-	if evDespues != ev1 {
+	if !reflect.DeepEqual(evDespues, ev1) {
 		t.Errorf("el evento 1 fue modificado tras registrar solicitud: %+v vs %+v", evDespues, ev1)
 	}
 }
@@ -799,5 +800,197 @@ func TestCrearYListarSolicitudConTiemposTecnicosHTTP(t *testing.T) {
 	}
 	if !sol.DatosPropuestos.HasMontaje || sol.DatosPropuestos.MontajeHoraInicio != "07:30" || sol.DatosPropuestos.MontajeHoraFin != "09:00" {
 		t.Errorf("snapshot propuesto de montaje incorrecto: %+v", sol.DatosPropuestos)
+	}
+}
+
+// 13. Prueba de GET /adicionales
+func TestListarCatalogoAdicionalesHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, _ := setupTestRouter()
+
+	req, _ := http.NewRequest(http.MethodGet, "/adicionales", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("se esperaba código 200 para catálogo de adicionales, se obtuvo %d", w.Code)
+	}
+
+	var catalogo []models.AdicionalCatalogo
+	if err := json.Unmarshal(w.Body.Bytes(), &catalogo); err != nil {
+		t.Fatalf("error al deserializar catálogo de adicionales: %v", err)
+	}
+
+	if len(catalogo) != 5 {
+		t.Errorf("se esperaban 5 ítems en el catálogo de adicionales, se obtuvieron %d", len(catalogo))
+	}
+}
+
+// 14. Prueba de integración de adicionales en POST y GET /solicitudes
+func TestCrearYListarSolicitudConAdicionalesHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, _ := setupTestRouter()
+
+	propAdicionales := []models.AdicionalPropuestoDTO{
+		{ID: "cochera", Cantidad: 2, Horas: 4},
+		{ID: "teleprompter", Cantidad: 1, Horas: 3},
+	}
+
+	payload := map[string]interface{}{
+		"evento_id":              1,
+		"motivo":                 "Se requiere teleprompter para el ponente principal y 2 cocheras",
+		"fecha_propuesta":        "2026-11-15",
+		"hora_inicio_propuesta":  "09:00",
+		"hora_fin_propuesta":     "13:00",
+		"adicionales_propuestos": propAdicionales,
+	}
+
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequest(http.MethodPost, "/solicitudes", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("se esperaba 201 Created al registrar solicitud con adicionales, se obtuvo %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Mensaje   string           `json:"mensaje"`
+		Solicitud models.Solicitud `json:"solicitud"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("error al parsear respuesta: %v", err)
+	}
+
+	sol := resp.Solicitud
+	if len(sol.DatosOriginales.Adicionales) != 1 {
+		t.Errorf("adicionales originales esperados: 1, obtenidos: %d", len(sol.DatosOriginales.Adicionales))
+	}
+	if len(sol.DatosPropuestos.Adicionales) != 2 {
+		t.Errorf("adicionales propuestos esperados: 2, obtenidos: %d", len(sol.DatosPropuestos.Adicionales))
+	}
+
+	// Verificar cálculo seguro en backend: Cochera 2 un * 4 h * 10 = 80; Teleprompter 1 un * 3 h * 10 = 30
+	var subtotalCochera, subtotalTeleprompter float64
+	for _, a := range sol.DatosPropuestos.Adicionales {
+		if a.ID == "cochera" {
+			subtotalCochera = a.Subtotal
+		} else if a.ID == "teleprompter" {
+			subtotalTeleprompter = a.Subtotal
+		}
+	}
+	if subtotalCochera != 80.0 {
+		t.Errorf("subtotal cochera esperado 80.0, obtenido %v", subtotalCochera)
+	}
+	if subtotalTeleprompter != 30.0 {
+		t.Errorf("subtotal teleprompter esperado 30.0, obtenido %v", subtotalTeleprompter)
+	}
+
+	// Consultar GET /solicitudes y verificar que persisten los snapshots
+	reqGet, _ := http.NewRequest(http.MethodGet, "/solicitudes", nil)
+	wGet := httptest.NewRecorder()
+	r.ServeHTTP(wGet, reqGet)
+
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("se esperaba 200 en GET /solicitudes, obtenido %d", wGet.Code)
+	}
+
+	var lista []models.Solicitud
+	if err := json.Unmarshal(wGet.Body.Bytes(), &lista); err != nil {
+		t.Fatalf("error parseando solicitudes: %v", err)
+	}
+
+	if len(lista) == 0 {
+		t.Fatalf("se esperaba al menos 1 solicitud en listado")
+	}
+	solGuardada := lista[len(lista)-1]
+	if len(solGuardada.DatosPropuestos.Adicionales) != 2 {
+		t.Errorf("adicionales propuestos en GET esperados: 2, obtenidos: %d", len(solGuardada.DatosPropuestos.Adicionales))
+	}
+}
+
+func TestAdicionalesHTTPCasoConcreto(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r, store := setupTestRouter()
+	ctx := context.Background()
+
+	ev1, err := store.ObtenerEventoPorID(ctx, 1)
+	if err != nil {
+		t.Fatalf("error obteniendo evento 1: %v", err)
+	}
+
+	payload := map[string]interface{}{
+		"evento_id":             1,
+		"motivo":                "Ajuste completo de adicionales para el auditorio",
+		"fecha_propuesta":       ev1.Fecha,
+		"hora_inicio_propuesta": ev1.HoraInicio,
+		"hora_fin_propuesta":    ev1.HoraFin,
+		"adicionales_propuestos": []map[string]interface{}{
+			{"id": "pantalla_led_5x4", "cantidad": 1, "horas": 1},
+			{"id": "microfono", "cantidad": 2, "horas": 1},
+			{"id": "cochera", "cantidad": 5, "horas": 1},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequest(http.MethodPost, "/solicitudes", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("se esperaba 201 Created, obtenido %d: %s", w.Code, w.Body.String())
+	}
+
+	var res struct {
+		Mensaje   string           `json:"mensaje"`
+		Solicitud models.Solicitud `json:"solicitud"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("error parseando respuesta: %v", err)
+	}
+
+	// 1) Validar snapshot original: 1 Cochera S/ 40
+	orig := res.Solicitud.DatosOriginales.Adicionales
+	if len(orig) != 1 {
+		t.Fatalf("se esperaba 1 adicional original, obtenidos %d", len(orig))
+	}
+	if orig[0].ID != "cochera" || orig[0].Unidad != "unidad" || orig[0].Subtotal != 40.0 {
+		t.Errorf("snapshot original de cochera incorrecto: %+v", orig[0])
+	}
+
+	// 2) Validar snapshot propuesto: Pantalla (200), Microfono (10), Cochera (50) -> S/ 260
+	prop := res.Solicitud.DatosPropuestos.Adicionales
+	if len(prop) != 3 {
+		t.Fatalf("se esperaban 3 adicionales propuestos, obtenidos %d", len(prop))
+	}
+	var totalPropuesto float64
+	for _, a := range prop {
+		totalPropuesto += a.Subtotal
+		if a.Unidad != "unidad" {
+			t.Errorf("adicional propuesto '%s' no tiene unidad 'unidad': %s", a.ID, a.Unidad)
+		}
+		if a.Nombre == "" || a.Nombre == a.ID {
+			t.Errorf("adicional '%s' no tiene nombre comercial: %s", a.ID, a.Nombre)
+		}
+	}
+	if totalPropuesto != 260.0 {
+		t.Errorf("total propuesto esperado 260.0, obtenido %f", totalPropuesto)
+	}
+
+	// 3) GET /solicitudes debe persistir los mismos snapshots
+	reqGet, _ := http.NewRequest(http.MethodGet, "/solicitudes", nil)
+	wGet := httptest.NewRecorder()
+	r.ServeHTTP(wGet, reqGet)
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("GET /solicitudes retornó %d", wGet.Code)
+	}
+
+	var lista []models.Solicitud
+	_ = json.Unmarshal(wGet.Body.Bytes(), &lista)
+	solGuardada := lista[len(lista)-1]
+	if len(solGuardada.DatosPropuestos.Adicionales) != 3 {
+		t.Errorf("GET: se esperaban 3 adicionales propuestos, obtenidos %d", len(solGuardada.DatosPropuestos.Adicionales))
 	}
 }

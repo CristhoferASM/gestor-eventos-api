@@ -48,6 +48,23 @@ describe('EventosApiService', () => {
     req.flush(eventosDemo);
   });
 
+  it('debe consultar GET /api/adicionales y retornar el catálogo', () => {
+    const catalogoDemo = [
+      { id: 'cochera', nombre: 'Cochera', unidad_label: 'S/ 10.00 / h', unidad: 'unidad', tarifa_hora: 10 },
+      { id: 'pantalla_led_5x4', nombre: 'Pantalla LED 5x4', unidad_label: 'S/ 200.00 / h', unidad: 'unidad', tarifa_hora: 200 },
+    ];
+
+    service.obtenerCatalogoAdicionales().subscribe((res) => {
+      expect(res.length).toBe(2);
+      expect(res[0].id).toBe('cochera');
+      expect(res[0].tarifa_hora).toBe(10);
+    });
+
+    const req = httpMock.expectOne('/api/adicionales');
+    expect(req.request.method).toBe('GET');
+    req.flush(catalogoDemo);
+  });
+
   it('debe enviar POST /api/solicitudes con el bloque informacion_general_propuesta y snapshots completos', () => {
     const payload: SolicitudCreacionPayload = {
       evento_id: 1,

@@ -28,9 +28,8 @@ type ClockFunc func() time.Time
 
 // SolicitudService contiene las validaciones de negocio, construcción de snapshots y registro de solicitudes.
 //
-// Nota sobre fecha_creacion: por compatibilidad con el contrato JSON actual, se formatea como
-// "2006-01-02 15:04:05" usando el reloj configurado. Su formato definitivo (p. ej. RFC3339 / TIMESTAMPTZ)
-// y el criterio de zona horaria se revisarán al incorporar la persistencia en PostgreSQL.
+// Nota sobre fecha_creacion: se formatea en RFC 3339 con offset de zona horaria explícito usando el reloj configurado
+// (s.clock().Format(time.RFC3339)), permitiendo una conversión precisa de instantes en el frontend (America/Lima).
 type SolicitudService struct {
 	eventoRepo    repositories.EventoRepository
 	solicitudRepo repositories.SolicitudRepository
@@ -97,6 +96,26 @@ func esCorreoValido(correo string) bool {
 	}
 	for _, et := range etiquetas {
 		if et == "" || strings.HasPrefix(et, "-") || strings.HasSuffix(et, "-") {
+			return false
+		}
+	}
+	return true
+}
+
+func sonAdicionalesIguales(orig, prop []models.AdicionalItem) bool {
+	if len(orig) != len(prop) {
+		return false
+	}
+	mapOrig := make(map[string]models.AdicionalItem, len(orig))
+	for _, item := range orig {
+		mapOrig[item.ID] = item
+	}
+	for _, item := range prop {
+		o, ok := mapOrig[item.ID]
+		if !ok {
+			return false
+		}
+		if o.Cantidad != item.Cantidad || o.Horas != item.Horas || o.TarifaHora != item.TarifaHora || o.Subtotal != item.Subtotal {
 			return false
 		}
 	}
@@ -409,6 +428,55 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 		ensayoHoraFinProp = ""
 	}
 
+	// 8b. Procesar y validar bloque de adicionales del evento
+	origAdicionales := make([]models.AdicionalItem, len(evento.Adicionales))
+	copy(origAdicionales, evento.Adicionales)
+
+	var propAdicionales []models.AdicionalItem
+	if dto.AdicionalesPropuestos == nil {
+		propAdicionales = make([]models.AdicionalItem, len(evento.Adicionales))
+		copy(propAdicionales, evento.Adicionales)
+	} else {
+		propAdicionales = make([]models.AdicionalItem, 0, len(*dto.AdicionalesPropuestos))
+		vistos := make(map[string]bool)
+		for _, adicDTO := range *dto.AdicionalesPropuestos {
+			idLimpio := strings.TrimSpace(adicDTO.ID)
+			if idLimpio == "" {
+				return models.Solicitud{}, nuevoErrorValidacion("El identificador del adicional es obligatorio.")
+			}
+			catItem := models.ObtenerAdicionalCatalogo(idLimpio)
+			if catItem == nil {
+				return models.Solicitud{}, nuevoErrorValidacion(fmt.Sprintf("El adicional '%s' no existe en el catálogo de servicios.", idLimpio))
+			}
+			if vistos[idLimpio] {
+				return models.Solicitud{}, nuevoErrorValidacion(fmt.Sprintf("El adicional '%s' se encuentra duplicado en la propuesta.", idLimpio))
+			}
+			vistos[idLimpio] = true
+
+			if adicDTO.Cantidad <= 0 {
+				return models.Solicitud{}, nuevoErrorValidacion("La cantidad de unidades debe ser un número entero mayor a 0.")
+			}
+			if adicDTO.Horas <= 0 {
+				return models.Solicitud{}, nuevoErrorValidacion("Las horas de uso deben ser un número entero mayor a 0.")
+			}
+
+			subtotal := float64(adicDTO.Cantidad*adicDTO.Horas) * catItem.TarifaHora
+			subtotal = float64(int64(subtotal*100+0.5)) / 100
+
+			propAdicionales = append(propAdicionales, models.AdicionalItem{
+				ID:         catItem.ID,
+				Nombre:     catItem.Nombre,
+				Unidad:     catItem.Unidad,
+				Cantidad:   adicDTO.Cantidad,
+				Horas:      adicDTO.Horas,
+				TarifaHora: catItem.TarifaHora,
+				Subtotal:   subtotal,
+			})
+		}
+	}
+
+	hayCambioAdicionales := !sonAdicionalesIguales(origAdicionales, propAdicionales)
+
 	// 9. Validar existencia de al menos un cambio efectivo entre todos los campos admitidos
 	hayCambioHorario := fechaLimpia != evento.Fecha || horaInicioNorm != evento.HoraInicio || horaFinNorm != evento.HoraFin
 	hayCambioInfoGeneral := nombreProp != origNombre ||
@@ -423,8 +491,8 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 		(hasEnsayoProp != evento.HasEnsayo) ||
 		(hasEnsayoProp && (ensayoFechaProp != evento.EnsayoFecha || ensayoHoraInicioProp != evento.EnsayoHoraInicio || ensayoHoraFinProp != evento.EnsayoHoraFin))
 
-	if !hayCambioHorario && !hayCambioInfoGeneral && !hayCambioTiemposTecnicos {
-		return models.Solicitud{}, nuevoErrorValidacion("La solicitud debe proponer al menos un cambio efectivo en la información general, contacto, fecha, horario o tiempos técnicos respecto al evento original.")
+	if !hayCambioHorario && !hayCambioInfoGeneral && !hayCambioTiemposTecnicos && !hayCambioAdicionales {
+		return models.Solicitud{}, nuevoErrorValidacion("La solicitud debe proponer al menos un cambio efectivo en la información general, contacto, fecha, horario, tiempos técnicos o adicionales respecto al evento original.")
 	}
 
 	var tiemposPropuestosDTO *models.TiemposTecnicosPropuestosDTO
@@ -460,8 +528,9 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 			Observaciones: observacionesProp,
 		},
 		TiemposTecnicosPropuestos: tiemposPropuestosDTO,
+		AdicionalesPropuestos:     dto.AdicionalesPropuestos,
 		Estado:                    models.EstadoPendienteRevision,
-		FechaCreacion:             s.clock().Format("2006-01-02 15:04:05"),
+		FechaCreacion:             s.clock().Format(time.RFC3339),
 		DatosOriginales: models.DatosHorario{
 			Nombre:               origNombre,
 			Espacio:              evento.Espacio,
@@ -484,6 +553,7 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 			EnsayoFecha:          evento.EnsayoFecha,
 			EnsayoHoraInicio:     evento.EnsayoHoraInicio,
 			EnsayoHoraFin:        evento.EnsayoHoraFin,
+			Adicionales:          origAdicionales,
 		},
 		DatosPropuestos: models.DatosHorario{
 			Nombre:               nombreProp,
@@ -507,6 +577,7 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 			EnsayoFecha:          ensayoFechaProp,
 			EnsayoHoraInicio:     ensayoHoraInicioProp,
 			EnsayoHoraFin:        ensayoHoraFinProp,
+			Adicionales:          propAdicionales,
 		},
 	}
 

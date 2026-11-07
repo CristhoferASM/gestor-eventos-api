@@ -49,10 +49,11 @@ type DatosHorario struct {
 	DesmontajeFecha      string `json:"desmontaje_fecha"`
 	DesmontajeHoraInicio string `json:"desmontaje_hora_inicio"`
 	DesmontajeHoraFin    string `json:"desmontaje_hora_fin"`
-	HasEnsayo            bool   `json:"has_ensayo"`
-	EnsayoFecha          string `json:"ensayo_fecha"`
-	EnsayoHoraInicio     string `json:"ensayo_hora_inicio"`
-	EnsayoHoraFin        string `json:"ensayo_hora_fin"`
+	HasEnsayo            bool            `json:"has_ensayo"`
+	EnsayoFecha          string          `json:"ensayo_fecha"`
+	EnsayoHoraInicio     string          `json:"ensayo_hora_inicio"`
+	EnsayoHoraFin        string          `json:"ensayo_hora_fin"`
+	Adicionales          []AdicionalItem `json:"adicionales"`
 }
 
 // SolicitudCreacionDTO representa la estructura del JSON recibido en POST /solicitudes.
@@ -64,6 +65,7 @@ type SolicitudCreacionDTO struct {
 	HoraFinPropuesta            string                          `json:"hora_fin_propuesta" binding:"required"`
 	InformacionGeneralPropuesta *InformacionGeneralPropuestaDTO `json:"informacion_general_propuesta,omitempty"`
 	TiemposTecnicosPropuestos   *TiemposTecnicosPropuestosDTO   `json:"tiempos_tecnicos_propuestos,omitempty"`
+	AdicionalesPropuestos       *[]AdicionalPropuestoDTO        `json:"adicionales_propuestos,omitempty"`
 	// Campos directos opcionales para máxima interoperabilidad
 	HasMontaje           *bool  `json:"has_montaje,omitempty"`
 	MontajeFecha         string `json:"montaje_fecha,omitempty"`
@@ -92,10 +94,10 @@ type Solicitud struct {
 	HoraFinPropuesta            string                         `json:"hora_fin_propuesta"`
 	InformacionGeneralPropuesta InformacionGeneralPropuestaDTO `json:"informacion_general_propuesta"`
 	TiemposTecnicosPropuestos   *TiemposTecnicosPropuestosDTO  `json:"tiempos_tecnicos_propuestos,omitempty"`
+	AdicionalesPropuestos       *[]AdicionalPropuestoDTO       `json:"adicionales_propuestos,omitempty"`
 	Estado                      string                         `json:"estado"` // "Pendiente de revisión"
-	// FechaCreacion conserva por ahora el formato "YYYY-MM-DD HH:MM:SS" en el contrato JSON actual.
-	// Su formato (p. ej. RFC3339 / TIMESTAMPTZ) y el manejo explícito de zona horaria se revisarán
-	// cuando se implemente la persistencia definitiva en PostgreSQL.
+	// FechaCreacion se genera en formato RFC 3339 con offset de zona horaria explícito (time.RFC3339).
+	// El frontend convierte el instante a America/Lima y mantiene compatibilidad con registros legacy ("YYYY-MM-DD HH:MM:SS").
 	FechaCreacion   string       `json:"fecha_creacion"`
 	DatosOriginales DatosHorario `json:"datos_originales"`
 	DatosPropuestos DatosHorario `json:"datos_propuestos"`

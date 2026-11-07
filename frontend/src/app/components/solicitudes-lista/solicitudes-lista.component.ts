@@ -1,5 +1,11 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { Evento, Solicitud } from '../../models/gestor-eventos.models';
+import {
+  AdicionalCatalogo,
+  Evento,
+  Solicitud,
+  formatearFechaHoraEnvio,
+  obtenerResumenCambiosSolicitud,
+} from '../../models/gestor-eventos.models';
 
 @Component({
   selector: 'app-solicitudes-lista',
@@ -55,16 +61,15 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
       } @else if (solicitudes.length === 0) {
         <p class="ayuda texto-vacio" role="status">Todavía no hay solicitudes registradas</p>
       } @else {
-        <!-- Tabla en escritorio -->
+        <!-- Tabla en escritorio: seis columnas compactas del prototipo -->
         <div class="tabla-wrap vista-escritorio">
           <table class="tabla-solicitudes">
             <thead>
               <tr>
-                <th scope="col">ID</th>
-                <th scope="col">Evento asociado</th>
-                <th scope="col">Datos originales</th>
-                <th scope="col">Datos propuestos</th>
-                <th scope="col">Motivo</th>
+                <th scope="col">Código</th>
+                <th scope="col">Evento</th>
+                <th scope="col">Fecha de envío</th>
+                <th scope="col">Cambios solicitados</th>
                 <th scope="col">Estado</th>
                 <th scope="col" class="num-der">Acción</th>
               </tr>
@@ -72,54 +77,26 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
             <tbody>
               @for (sol of solicitudes; track sol.id) {
                 <tr>
-                  <td>
+                  <td class="celda-codigo">
                     <span class="badge-solicitud-codigo">#{{ sol.id }}</span>
                   </td>
                   <td class="celda-evento">
-                    <strong>{{ obtenerNombreEventoSolicitud(sol) }}</strong>
+                    <span class="evento-nombre">{{ obtenerNombreEventoSolicitud(sol) }}</span>
                     <small class="subtexto-evento">Evento ID: {{ sol.evento_id }}</small>
                   </td>
-                  <td>
-                    <div class="bloque-datos">
-                      @if (sol.datos_originales.contacto) {
-                        <span><strong>Contacto:</strong> {{ sol.datos_originales.contacto }}</span>
-                      }
-                      <span><strong>Fecha:</strong> {{ sol.datos_originales.fecha }}</span>
-                      <span>
-                        <strong>Horario:</strong>
-                        <span class="rango-horario"
-                          >{{ sol.datos_originales.hora_inicio }} -
-                          {{ sol.datos_originales.hora_fin }}</span
-                        >
-                      </span>
-                    </div>
+                  <td class="celda-fecha-envio">
+                    <span class="fecha-envio-texto">{{ formatearFechaHoraEnvio(sol.fecha_creacion) }}</span>
                   </td>
-                  <td>
-                    <div class="bloque-datos bloque-datos--propuesto">
-                      @if (sol.datos_propuestos.nombre && sol.datos_propuestos.nombre !== sol.datos_originales.nombre) {
-                        <span><strong>Nombre:</strong> {{ sol.datos_propuestos.nombre }}</span>
-                      }
-                      @if (sol.datos_propuestos.contacto) {
-                        <span><strong>Contacto:</strong> {{ sol.datos_propuestos.contacto }}</span>
-                      }
-                      <span><strong>Fecha:</strong> {{ sol.datos_propuestos.fecha }}</span>
-                      <span>
-                        <strong>Horario:</strong>
-                        <span class="rango-horario"
-                          >{{ sol.datos_propuestos.hora_inicio }} -
-                          {{ sol.datos_propuestos.hora_fin }}</span
-                        >
-                      </span>
-                    </div>
+                  <td class="celda-cambios">
+                    <span class="texto-cambios-solicitados">{{ obtenerResumenCambios(sol) }}</span>
                   </td>
-                  <td class="celda-motivo">{{ sol.motivo }}</td>
-                  <td>
+                  <td class="celda-estado">
                     <span class="badge-solicitud-pendiente">{{ sol.estado }}</span>
                   </td>
-                  <td class="num-der">
+                  <td class="num-der celda-accion">
                     <button
                       type="button"
-                      class="btn btn-sec btn-chico"
+                      class="btn btn-sec btn-chico btn-accion-detalle"
                       (click)="verDetalle.emit(sol)"
                     >
                       Ver detalle
@@ -136,7 +113,7 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
           @for (sol of solicitudes; track sol.id) {
             <article class="tarjeta-solicitud-movil">
               <div class="tarjeta-solicitud-movil__cabecera">
-                <span class="badge-solicitud-codigo">Solicitud #{{ sol.id }}</span>
+                <span class="badge-solicitud-codigo">#{{ sol.id }}</span>
                 <span class="badge-solicitud-pendiente">{{ sol.estado }}</span>
               </div>
 
@@ -145,33 +122,21 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
                 <small>(Evento ID: {{ sol.evento_id }})</small>
               </h4>
 
-              <div class="tarjeta-solicitud-movil__comparativa">
-                <div class="caja-horario">
-                  <small class="caja-horario__titulo">Datos originales</small>
-                  <span>{{ sol.datos_originales.fecha }}</span>
-                  <span class="rango-horario"
-                    >{{ sol.datos_originales.hora_inicio }} -
-                    {{ sol.datos_originales.hora_fin }}</span
-                  >
+              <div class="tarjeta-solicitud-movil__meta">
+                <div class="tarjeta-solicitud-movil__item">
+                  <small>Fecha de envío: </small>
+                  <span class="fecha-envio-texto">{{ formatearFechaHoraEnvio(sol.fecha_creacion) }}</span>
                 </div>
-                <div class="caja-horario caja-horario--propuesto">
-                  <small class="caja-horario__titulo">Datos propuestos</small>
-                  <span>{{ sol.datos_propuestos.fecha }}</span>
-                  <span class="rango-horario"
-                    >{{ sol.datos_propuestos.hora_inicio }} -
-                    {{ sol.datos_propuestos.hora_fin }}</span
-                  >
+                <div class="tarjeta-solicitud-movil__item">
+                  <small>Cambios solicitados: </small>
+                  <span class="texto-cambios-solicitados">{{ obtenerResumenCambios(sol) }}</span>
                 </div>
               </div>
-
-              <p class="tarjeta-solicitud-movil__motivo">
-                <strong>Motivo:</strong> {{ sol.motivo }}
-              </p>
 
               <div class="tarjeta-solicitud-movil__pie">
                 <button
                   type="button"
-                  class="btn btn-sec btn-chico"
+                  class="btn btn-sec btn-chico btn-accion-detalle"
                   (click)="verDetalle.emit(sol)"
                 >
                   Ver detalle
@@ -252,35 +217,64 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
         text-align: right;
       }
 
-      .celda-evento strong {
+      .celda-codigo {
+        white-space: nowrap;
+        width: 1%;
+      }
+
+      .celda-evento {
+        min-width: 180px;
+      }
+
+      .evento-nombre {
         display: block;
+        font-weight: 700;
         color: var(--primario);
+        line-height: 1.35;
+        overflow-wrap: break-word;
+        word-break: normal;
+        hyphens: manual;
       }
 
       .subtexto-evento {
         display: block;
         font-size: 11.5px;
-        color: var(--gris);
+        color: var(--texto-sec);
+        margin-top: 2px;
       }
 
-      .bloque-datos {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        font-size: 12.5px;
-      }
-
-      .bloque-datos--propuesto {
-        color: var(--primario-2);
-      }
-
-      .rango-horario {
+      .celda-fecha-envio {
         white-space: nowrap;
       }
 
-      .celda-motivo {
-        max-width: 260px;
-        word-break: break-word;
+      .fecha-envio-texto {
+        font-size: 13px;
+        color: var(--texto-sec);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .celda-cambios {
+        white-space: nowrap;
+      }
+
+      .texto-cambios-solicitados {
+        font-size: 13px;
+        color: var(--texto);
+      }
+
+      .celda-estado {
+        white-space: nowrap;
+      }
+
+      .celda-accion {
+        white-space: nowrap;
+        width: 1%;
+      }
+
+      .btn-accion-detalle {
+        white-space: nowrap;
+        padding: 6px 12px;
       }
 
       .vista-movil {
@@ -314,69 +308,53 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
         font-size: 14.5px;
         color: var(--primario);
         margin: 0;
+        line-height: 1.35;
+        overflow-wrap: break-word;
+        word-break: normal;
       }
 
       .tarjeta-solicitud-movil__evento small {
         font-weight: normal;
-        color: var(--gris);
+        color: var(--texto-sec);
         font-size: 12px;
       }
 
-      .tarjeta-solicitud-movil__comparativa {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-
-      .caja-horario {
-        background: var(--fondo);
-        padding: 8px 10px;
-        border-radius: 6px;
+      .tarjeta-solicitud-movil__meta {
         display: flex;
         flex-direction: column;
-        gap: 2px;
-        font-size: 12.5px;
-      }
-
-      .caja-horario--propuesto {
-        background: #fffdf5;
-        border: 1px solid #f6d17b;
-      }
-
-      .caja-horario__titulo {
-        font-size: 11px;
-        font-weight: bold;
-        color: var(--primario);
-        text-transform: uppercase;
-      }
-
-      .tarjeta-solicitud-movil__motivo {
+        gap: 6px;
         font-size: 13px;
-        word-break: break-word;
-        margin: 0;
+      }
+
+      .tarjeta-solicitud-movil__item {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: baseline;
+      }
+
+      .tarjeta-solicitud-movil__item small {
+        font-weight: 600;
+        color: var(--primario);
       }
 
       .tarjeta-solicitud-movil__pie {
         display: flex;
         justify-content: flex-end;
-      }
-
-      .estado-carga {
-        display: flex;
-        align-items: center;
-        gap: 10px;
+        margin-top: 4px;
       }
 
       .spinner {
+        display: inline-block;
         width: 16px;
         height: 16px;
-        border: 2px solid #c5d1e8;
+        border: 2px solid var(--borde);
         border-top-color: var(--primario-2);
         border-radius: 50%;
-        animation: girar 0.8s linear infinite;
+        animation: spin 0.8s linear infinite;
       }
 
-      @keyframes girar {
+      @keyframes spin {
         to {
           transform: rotate(360deg);
         }
@@ -401,10 +379,6 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
       }
 
       @media (max-width: 480px) {
-        .tarjeta-solicitud-movil__comparativa {
-          grid-template-columns: 1fr;
-        }
-
         .tarjeta-solicitud-movil__pie .btn {
           width: 100%;
         }
@@ -413,13 +387,20 @@ import { Evento, Solicitud } from '../../models/gestor-eventos.models';
   ],
 })
 export class SolicitudesListaComponent {
+  readonly formatearFechaHoraEnvio = formatearFechaHoraEnvio;
+
   @Input() solicitudes: Solicitud[] = [];
   @Input() eventos: Evento[] = [];
+  @Input() catalogoAdicionales: AdicionalCatalogo[] = [];
   @Input() cargando = false;
   @Input() errorCarga = '';
 
   @Output() verDetalle = new EventEmitter<Solicitud>();
   @Output() reintentar = new EventEmitter<void>();
+
+  obtenerResumenCambios(sol: Solicitud): string {
+    return obtenerResumenCambiosSolicitud(sol, this.catalogoAdicionales);
+  }
 
   obtenerNombreEventoSolicitud(sol: Solicitud): string {
     if (sol.datos_originales?.nombre) {

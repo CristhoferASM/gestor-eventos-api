@@ -1,6 +1,13 @@
-import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
+import { Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Evento, SolicitudCreacionPayload } from '../../models/gestor-eventos.models';
+import {
+  AdicionalCatalogo,
+  AdicionalItem,
+  Evento,
+  SolicitudCreacionPayload,
+  formatSoles,
+  sonAdicionalesIguales,
+} from '../../models/gestor-eventos.models';
 import {
   contarRunasUnicode,
   correoOpcionalValidator,
@@ -777,6 +784,188 @@ import {
             </div>
           </div>
 
+          <!-- Bloque: Adicionales del Evento -->
+          <div class="seccion-adicionales-evento" id="seccionAdicionalesCliente">
+            <div class="adicionales-cabecera">
+              <div>
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  </svg>
+                  Adicionales del evento
+                </h3>
+                <p class="ayuda" style="margin-top: 2px; margin-bottom: 8px;">
+                  Seleccione servicios técnicos o recursos adicionales que desee incorporar a su propuesta.
+                  <span class="nota-referencial-prototipo">Importes referenciales para el prototipo</span>
+                </p>
+              </div>
+            </div>
+
+            <!-- Formulario para agregar / actualizar adicional -->
+            <div class="adicionales-form-card">
+              <div class="adicionales-form-grid">
+                <div class="campo-adicional-item campo-adic-select">
+                  <label for="selAdicionalCliente">Adicional</label>
+                  <select
+                    id="selAdicionalCliente"
+                    class="select-adicional"
+                    [value]="selAdicionalId()"
+                    (change)="alCambiarSeleccionAdicional($event)"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  >
+                    @for (cat of catalogo(); track cat.id) {
+                      <option [value]="cat.id">{{ cat.nombre }} ({{ formatSoles(cat.tarifa_hora) }} / h)</option>
+                    }
+                  </select>
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="numAdicionalCantidadCliente" id="lblAdicionalCantidadCliente">{{ labelUnidadActual() }}</label>
+                  <input
+                    type="number"
+                    id="numAdicionalCantidadCliente"
+                    min="1"
+                    step="1"
+                    [value]="numAdicionalCantidad()"
+                    (input)="alCambiarCantidadAdicional($event)"
+                    class="input-numero"
+                    aria-label="Cantidad de unidades"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="numAdicionalHorasCliente">Horas de uso</label>
+                  <input
+                    type="number"
+                    id="numAdicionalHorasCliente"
+                    min="1"
+                    step="1"
+                    [value]="numAdicionalHoras()"
+                    (input)="alCambiarHorasAdicional($event)"
+                    class="input-numero"
+                    aria-label="Horas de uso"
+                    [attr.disabled]="tienePendiente || enviando ? true : null"
+                  />
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="txtAdicionalTarifaCliente">Tarifa por hora</label>
+                  <input
+                    type="text"
+                    id="txtAdicionalTarifaCliente"
+                    readonly
+                    class="input-readonly"
+                    [value]="tarifaActualTexto()"
+                    aria-label="Tarifa por hora de solo lectura"
+                  />
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="txtAdicionalSubtotalCliente">Subtotal estimado</label>
+                  <input
+                    type="text"
+                    id="txtAdicionalSubtotalCliente"
+                    readonly
+                    class="input-readonly subtotal-destacado"
+                    [value]="subtotalActualTexto()"
+                    aria-label="Subtotal calculado"
+                  />
+                </div>
+
+                <div class="campo-adicional-accion">
+                  <button
+                    type="button"
+                    class="btn btn-primario"
+                    id="btnAgregarAdicionalCliente"
+                    (click)="agregarOActualizarAdicional()"
+                    [disabled]="tienePendiente || enviando"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span id="btnAgregarAdicionalTextoCliente">{{ textoBotonAdicional() }}</span>
+                  </button>
+                </div>
+              </div>
+              @if (errAdicionalForm()) {
+                <span class="msg-error-campo" id="errAdicionalFormCliente" role="alert">{{ errAdicionalForm() }}</span>
+              }
+            </div>
+
+            <!-- Tabla de adicionales agregados en la propuesta -->
+            <div class="tabla-adicionales-wrap">
+              <table class="tabla-adicionales" id="tablaAdicionalesCliente">
+                <thead>
+                  <tr>
+                    <th>Adicional</th>
+                    <th style="text-align: center;">Cantidad</th>
+                    <th style="text-align: center;">Horas de uso</th>
+                    <th style="text-align: right;">Tarifa por hora</th>
+                    <th style="text-align: right;">Subtotal</th>
+                    <th style="text-align: center;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyAdicionalesCliente">
+                  @for (item of formAdicionales(); track item.id) {
+                    <tr [attr.data-adic-id]="item.id">
+                      <td><strong>{{ item.nombre }}</strong></td>
+                      <td style="text-align: center;">{{ item.cantidad }}</td>
+                      <td style="text-align: center;">{{ item.horas }} h</td>
+                      <td style="text-align: right;">{{ formatSoles(item.tarifa_hora) }} / h</td>
+                      <td style="text-align: right; font-weight: 700; color: var(--primario);">{{ formatSoles(item.subtotal) }}</td>
+                      <td style="text-align: center;">
+                        <button
+                          type="button"
+                          class="btn-accion-adic btn-edit-adic"
+                          (click)="editarAdicional(item.id)"
+                          title="Editar cantidad y horas"
+                          [disabled]="tienePendiente || enviando"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"></path>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                          </svg>
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          class="btn-accion-adic btn-delete-adic"
+                          (click)="eliminarAdicional(item.id)"
+                          title="Quitar de la propuesta"
+                          [disabled]="tienePendiente || enviando"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          </svg>
+                          Quitar
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+                @if (formAdicionales().length > 0) {
+                  <tfoot>
+                    <tr class="fila-total-adicionales">
+                      <td colspan="4" style="text-align: right; font-weight: bold;">Total de adicionales propuesto:</td>
+                      <td style="text-align: right; font-weight: bold; color: var(--primario);" id="totalAdicionalesTablaCliente">{{ totalAdicionalesTablaTexto() }}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                }
+              </table>
+              @if (formAdicionales().length === 0) {
+                <div class="adicionales-vacio-msg" id="msgAdicionalesVacioCliente">
+                  No ha agregado servicios adicionales a su propuesta.
+                </div>
+              }
+            </div>
+          </div>
+
           <!-- Bloque 4: Motivo de la Solicitud (OBLIGATORIO) -->
           <div class="form" style="margin-top: 18px;">
             <div class="completo">
@@ -1338,6 +1527,223 @@ import {
         }
       }
 
+      /* Estilos del Bloque de Adicionales del Evento (Showtech Prototype) */
+      .seccion-adicionales-evento {
+        margin-top: 24px;
+        border-top: 1px solid var(--borde);
+        padding-top: 18px;
+      }
+
+      .adicionales-cabecera {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .adicionales-cabecera h3 {
+        margin: 0 0 4px 0;
+        color: var(--primario);
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .nota-referencial-prototipo {
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        color: #475569;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 4px;
+        display: inline-block;
+        margin-left: 6px;
+        letter-spacing: 0.2px;
+      }
+
+      .adicionales-form-card {
+        background: var(--blanco);
+        border: 1px solid var(--borde);
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+        box-shadow: 0 1px 3px rgba(19, 38, 74, 0.04);
+      }
+
+      .adicionales-form-grid {
+        display: grid;
+        grid-template-columns: minmax(180px, 2fr) minmax(110px, 1fr) minmax(110px, 1fr) minmax(120px, 1fr) minmax(130px, 1.2fr) auto;
+        gap: 10px;
+        align-items: end;
+      }
+
+      .campo-adicional-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .campo-adicional-item label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--primario);
+        margin-bottom: 0;
+      }
+
+      .campo-adicional-item .select-adicional,
+      .campo-adicional-item .input-numero,
+      .campo-adicional-item .input-readonly {
+        width: 100%;
+        height: 38px;
+        padding: 6px 10px;
+        border: 1.5px solid var(--borde);
+        border-radius: 6px;
+        font-size: 13.5px;
+        font-family: inherit;
+        color: var(--texto);
+        background: var(--blanco);
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+
+      .campo-adicional-item .select-adicional:focus,
+      .campo-adicional-item .input-numero:focus {
+        border-color: var(--primario-2);
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(31, 78, 156, 0.12);
+      }
+
+      .campo-adicional-item .input-readonly {
+        background: #f8fafc;
+        color: #334155;
+        cursor: default;
+        font-weight: 600;
+      }
+
+      .campo-adicional-item .subtotal-destacado {
+        color: var(--primario);
+        font-weight: 700;
+        background: #f0f4fc;
+        border-color: #cbd5e1;
+      }
+
+      .campo-adicional-accion {
+        display: flex;
+        align-items: flex-end;
+      }
+
+      .campo-adicional-accion .btn {
+        height: 38px;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 14px;
+      }
+
+      .tabla-adicionales-wrap {
+        background: var(--blanco);
+        border: 1px solid var(--borde);
+        border-radius: 8px;
+        overflow-x: auto;
+        margin-bottom: 14px;
+      }
+
+      .tabla-adicionales {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        text-align: left;
+      }
+
+      .tabla-adicionales th {
+        background: var(--fondo);
+        color: var(--primario);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        padding: 10px 12px;
+        border-bottom: 2px solid var(--borde);
+      }
+
+      .tabla-adicionales td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--borde);
+        color: var(--texto);
+        vertical-align: middle;
+      }
+
+      .tabla-adicionales tr:hover td {
+        background: #fbfcfe;
+      }
+
+      .fila-total-adicionales td {
+        background: #f8fafc;
+        font-size: 13.5px;
+        border-top: 2px solid var(--borde);
+      }
+
+      .btn-accion-adic {
+        border: 1px solid transparent;
+        background: transparent;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+      }
+
+      .btn-edit-adic {
+        color: var(--primario-2);
+        border-color: #cbd5e1;
+        background: #ffffff;
+      }
+
+      .btn-edit-adic:hover:not(:disabled) {
+        background: #eff6ff;
+        border-color: var(--primario-2);
+      }
+
+      .btn-delete-adic {
+        color: var(--error);
+        border-color: #fecaca;
+        background: #ffffff;
+        margin-left: 4px;
+      }
+
+      .btn-delete-adic:hover:not(:disabled) {
+        background: #fef2f2;
+        border-color: var(--error);
+      }
+
+      .adicionales-vacio-msg {
+        padding: 18px;
+        text-align: center;
+        color: var(--gris);
+        font-size: 13.5px;
+        background: #fafbfc;
+      }
+
+      @media (max-width: 900px) {
+        .adicionales-form-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        .campo-adicional-item.campo-adic-select {
+          grid-column: 1 / -1;
+        }
+        .campo-adicional-accion {
+          grid-column: 1 / -1;
+        }
+      }
+
       .acciones {
         display: flex;
         justify-content: space-between;
@@ -1358,6 +1764,21 @@ import {
 export class SolicitudFormularioComponent {
   private readonly fb = inject(FormBuilder);
 
+  readonly catalogo = signal<AdicionalCatalogo[]>([]);
+
+  @Input()
+  set catalogoInput(items: AdicionalCatalogo[] | null | undefined) {
+    const lista = Array.isArray(items) ? items : [];
+    this.catalogo.set(lista);
+    this.sincronizarCamposFormAdicional();
+  }
+
+  readonly formAdicionales = signal<AdicionalItem[]>([]);
+  readonly selAdicionalId = signal<string>('cochera');
+  readonly numAdicionalCantidad = signal<number>(1);
+  readonly numAdicionalHoras = signal<number>(1);
+  readonly errAdicionalForm = signal<string>('');
+
   eventoActual: Evento | null = null;
   private borradorActual: SolicitudCreacionPayload | null = null;
   intentoEnvio = false;
@@ -1371,6 +1792,7 @@ export class SolicitudFormularioComponent {
       this.aplicarValoresIniciales();
     } else if (!evento) {
       this.intentoEnvio = false;
+      this.formAdicionales.set([]);
       this.formulario.reset({
         nombre_propuesto: '',
         contacto_propuesto: '',
@@ -1437,6 +1859,27 @@ export class SolicitudFormularioComponent {
         },
         { emitEvent: false }
       );
+
+      if (valor.adicionales_propuestos) {
+        const cat = this.catalogo();
+        const restaurados: AdicionalItem[] = valor.adicionales_propuestos.map((p) => {
+          const c = cat.find((item) => item.id === p.id);
+          const tarifa = c?.tarifa_hora ?? 0;
+          const nombre = c?.nombre ?? p.id;
+          return {
+            id: p.id,
+            nombre,
+            cantidad: p.cantidad,
+            horas: p.horas,
+            tarifa_hora: tarifa,
+            subtotal: Math.round(p.cantidad * p.horas * tarifa * 100) / 100,
+          };
+        });
+        this.formAdicionales.set(restaurados);
+      } else if (this.eventoActual.adicionales) {
+        this.formAdicionales.set(JSON.parse(JSON.stringify(this.eventoActual.adicionales)));
+      }
+      this.sincronizarCamposFormAdicional();
       this.formulario.updateValueAndValidity({ emitEvent: false });
     }
   }
@@ -1488,7 +1931,7 @@ export class SolicitudFormularioComponent {
       motivo: ['', [Validators.required, motivoUnicodeValidator(400)]],
     },
     {
-      validators: [solicitudGrupoValidator(() => this.eventoActual)],
+      validators: [solicitudGrupoValidator(() => this.eventoActual, () => this.formAdicionales())],
     }
   );
 
@@ -1525,6 +1968,30 @@ export class SolicitudFormularioComponent {
         ensayo_hora_fin: tiempos ? tiempos.ensayo_hora_fin : (this.eventoActual.ensayo_hora_fin ?? ''),
         motivo: this.borradorActual.motivo,
       });
+
+      if (this.borradorActual.adicionales_propuestos) {
+        const cat = this.catalogo();
+        const restaurados: AdicionalItem[] = this.borradorActual.adicionales_propuestos.map((p) => {
+          const c = cat.find((item) => item.id === p.id);
+          const orig = this.eventoActual?.adicionales?.find((a) => a.id === p.id);
+          const nombre = c?.nombre || orig?.nombre || `[Adicional no identificado: ${p.id}]`;
+          const tarifa = c?.tarifa_hora ?? orig?.tarifa_hora ?? 0;
+          return {
+            id: p.id,
+            nombre,
+            unidad: c?.unidad || orig?.unidad || 'unidad',
+            cantidad: p.cantidad,
+            horas: p.horas,
+            tarifa_hora: tarifa,
+            subtotal: Math.round(p.cantidad * p.horas * tarifa * 100) / 100,
+          };
+        });
+        this.formAdicionales.set(restaurados);
+      } else if (this.eventoActual.adicionales) {
+        this.formAdicionales.set(JSON.parse(JSON.stringify(this.eventoActual.adicionales)));
+      } else {
+        this.formAdicionales.set([]);
+      }
     } else {
       this.formulario.reset({
         nombre_propuesto: this.eventoActual.nombre ?? '',
@@ -1549,7 +2016,13 @@ export class SolicitudFormularioComponent {
         ensayo_hora_fin: this.eventoActual.ensayo_hora_fin ?? '',
         motivo: '',
       });
+      if (this.eventoActual.adicionales) {
+        this.formAdicionales.set(JSON.parse(JSON.stringify(this.eventoActual.adicionales)));
+      } else {
+        this.formAdicionales.set([]);
+      }
     }
+    this.sincronizarCamposFormAdicional();
   }
 
   restaurarValoresOriginales(): void {
@@ -1581,6 +2054,155 @@ export class SolicitudFormularioComponent {
       ensayo_hora_fin: this.eventoActual.ensayo_hora_fin ?? '',
       motivo: '',
     });
+    if (this.eventoActual.adicionales) {
+      this.formAdicionales.set(JSON.parse(JSON.stringify(this.eventoActual.adicionales)));
+    } else {
+      this.formAdicionales.set([]);
+    }
+    this.sincronizarCamposFormAdicional();
+  }
+
+  formatSoles(monto: number | undefined | null): string {
+    return formatSoles(monto);
+  }
+
+  obtenerItemCatalogo(id: string): AdicionalCatalogo | undefined {
+    return this.catalogo().find((c) => c.id === id);
+  }
+
+  readonly itemSeleccionadoCatalogo = computed<AdicionalCatalogo | undefined>(() => {
+    return this.obtenerItemCatalogo(this.selAdicionalId());
+  });
+
+  readonly itemExistenteEnPropuesta = computed<AdicionalItem | undefined>(() => {
+    const id = this.selAdicionalId();
+    return this.formAdicionales().find((a) => a.id === id);
+  });
+
+  readonly labelUnidadActual = computed<string>(() => {
+    return this.itemSeleccionadoCatalogo()?.unidad_label || 'Cantidad de unidades';
+  });
+
+  readonly textoBotonAdicional = computed<string>(() => {
+    return this.itemExistenteEnPropuesta() ? 'Actualizar adicional' : 'Agregar adicional';
+  });
+
+  readonly tarifaActualTexto = computed<string>(() => {
+    const item = this.itemSeleccionadoCatalogo();
+    return item ? `${formatSoles(item.tarifa_hora)} / h` : 'S/ 0.00 / h';
+  });
+
+  readonly subtotalActualTexto = computed<string>(() => {
+    const item = this.itemSeleccionadoCatalogo();
+    if (!item) return 'S/ 0.00';
+    const cant = this.numAdicionalCantidad();
+    const horas = this.numAdicionalHoras();
+    if (isNaN(cant) || cant < 1 || isNaN(horas) || horas < 1) {
+      return 'S/ 0.00';
+    }
+    const sub = Math.round(cant * horas * item.tarifa_hora * 100) / 100;
+    return formatSoles(sub);
+  });
+
+  readonly totalAdicionalesTablaTexto = computed<string>(() => {
+    const total = this.formAdicionales().reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
+    return formatSoles(Math.round(total * 100) / 100);
+  });
+
+  sincronizarCamposFormAdicional(): void {
+    const cat = this.catalogo();
+    if (cat.length === 0) {
+      this.errAdicionalForm.set('');
+      return;
+    }
+    let id = this.selAdicionalId();
+    if (!cat.some((c) => c.id === id)) {
+      id = cat[0].id;
+      this.selAdicionalId.set(id);
+    }
+    const existente = this.formAdicionales().find((a) => a.id === id);
+    if (existente) {
+      this.numAdicionalCantidad.set(existente.cantidad);
+      this.numAdicionalHoras.set(existente.horas);
+    } else {
+      this.numAdicionalCantidad.set(1);
+      this.numAdicionalHoras.set(1);
+    }
+    this.errAdicionalForm.set('');
+  }
+
+  alCambiarSeleccionAdicional(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const nuevoId = select.value;
+    this.selAdicionalId.set(nuevoId);
+    this.sincronizarCamposFormAdicional();
+  }
+
+  alCambiarCantidadAdicional(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const val = parseInt(input.value, 10);
+    this.numAdicionalCantidad.set(isNaN(val) ? 0 : val);
+    this.errAdicionalForm.set('');
+  }
+
+  alCambiarHorasAdicional(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const val = parseInt(input.value, 10);
+    this.numAdicionalHoras.set(isNaN(val) ? 0 : val);
+    this.errAdicionalForm.set('');
+  }
+
+  agregarOActualizarAdicional(): void {
+    this.errAdicionalForm.set('');
+    const cat = this.itemSeleccionadoCatalogo();
+    if (!cat) return;
+
+    const cant = this.numAdicionalCantidad();
+    const horas = this.numAdicionalHoras();
+
+    if (!Number.isInteger(cant) || cant < 1) {
+      this.errAdicionalForm.set('La cantidad de unidades debe ser un número entero mayor a 0.');
+      return;
+    }
+
+    if (!Number.isInteger(horas) || horas < 1) {
+      this.errAdicionalForm.set('Las horas de uso deben ser un número entero mayor a 0.');
+      return;
+    }
+
+    const subtotal = Math.round(cant * horas * cat.tarifa_hora * 100) / 100;
+
+    this.formAdicionales.update((actuales) => {
+      const idx = actuales.findIndex((a) => a.id === cat.id);
+      const nuevoItem: AdicionalItem = {
+        id: cat.id,
+        nombre: cat.nombre,
+        unidad: cat.unidad || 'unidad',
+        cantidad: cant,
+        horas: horas,
+        tarifa_hora: cat.tarifa_hora,
+        subtotal,
+      };
+      if (idx >= 0) {
+        const copia = [...actuales];
+        copia[idx] = nuevoItem;
+        return copia;
+      }
+      return [...actuales, nuevoItem];
+    });
+
+    this.formulario.updateValueAndValidity();
+  }
+
+  editarAdicional(id: string): void {
+    this.selAdicionalId.set(id);
+    this.sincronizarCamposFormAdicional();
+  }
+
+  eliminarAdicional(id: string): void {
+    this.formAdicionales.update((actuales) => actuales.filter((a) => a.id !== id));
+    this.sincronizarCamposFormAdicional();
+    this.formulario.updateValueAndValidity();
   }
 
   alCambiarMontaje(): void {
@@ -1875,6 +2497,11 @@ export class SolicitudFormularioComponent {
         (this.formulario.get('ensayo_hora_fin')?.value ?? '').trim() !== (this.eventoActual.ensayo_hora_fin ?? '')
       ));
 
+    const tieneCambioAdicionales = !sonAdicionalesIguales(
+      this.eventoActual.adicionales,
+      this.formAdicionales()
+    );
+
     return (
       this.nombreModificado ||
       this.contactoModificado ||
@@ -1887,6 +2514,7 @@ export class SolicitudFormularioComponent {
       tieneCambioMontaje ||
       tieneCambioDesmontaje ||
       tieneCambioEnsayo ||
+      tieneCambioAdicionales ||
       motivoLimpio.length > 0
     );
   }
@@ -2000,6 +2628,23 @@ export class SolicitudFormularioComponent {
     const hasDesmontaje = Boolean(valores.has_desmontaje);
     const hasEnsayo = Boolean(valores.has_ensayo);
 
+    if (this.formAdicionales().length > 0) {
+      const cat = this.catalogo();
+      if (cat.length === 0) {
+        this.errAdicionalForm.set(
+          'El catálogo de adicionales no está disponible. No se puede continuar con la propuesta.'
+        );
+        return;
+      }
+      const itemDesconocido = this.formAdicionales().find((a) => !cat.some((c) => c.id === a.id));
+      if (itemDesconocido) {
+        this.errAdicionalForm.set(
+          `El adicional '${itemDesconocido.nombre || itemDesconocido.id}' no existe en el catálogo de servicios.`
+        );
+        return;
+      }
+    }
+
     const payload: SolicitudCreacionPayload = {
       evento_id: this.eventoActual.id,
       motivo: (valores.motivo ?? '').trim(),
@@ -2027,6 +2672,11 @@ export class SolicitudFormularioComponent {
         ensayo_hora_inicio: hasEnsayo ? (valores.ensayo_hora_inicio ?? '').trim() : '',
         ensayo_hora_fin: hasEnsayo ? (valores.ensayo_hora_fin ?? '').trim() : '',
       },
+      adicionales_propuestos: this.formAdicionales().map((a) => ({
+        id: a.id,
+        cantidad: a.cantidad,
+        horas: a.horas,
+      })),
     };
 
     this.continuarRevision.emit(payload);

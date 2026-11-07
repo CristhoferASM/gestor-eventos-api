@@ -1,6 +1,24 @@
+@if (vistaActiva() === 'asesor') {
+  <app-asesor-portal (volverACliente)="cambiarVista('cliente')" />
+} @else {
 <div class="layout-portal">
   <header class="cabecera">
     <div class="marca">SHOWTECH <span>SOLUTIONS</span></div>
+    <div class="cabecera-acciones">
+      <button
+        type="button"
+        class="btn-demo btn-switch-vista"
+        (click)="cambiarVista('asesor')"
+        title="Cambiar a vista del asesor comercial"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="8.5" cy="7.5" r="4"></circle>
+          <polyline points="17 11 19 13 23 9"></polyline>
+        </svg>
+        <span>Vista Asesor Comercial &rarr;</span>
+      </button>
+    </div>
   </header>
 
   <main class="contenedor-portal">
@@ -77,6 +95,20 @@
       </div>
     }
 
+    @if (errorCatalogoAdicionales() && pasoActual() !== 4) {
+      <div class="alerta alerta-error alerta-global" id="alertaErrorCatalogoGlobal" role="alert" aria-live="assertive">
+        <p>{{ errorCatalogoAdicionales() }}</p>
+        <button
+          type="button"
+          class="btn btn-secundario btn-sm"
+          id="btnReintentarCatalogoGlobal"
+          (click)="cargarCatalogoAdicionales()"
+        >
+          Reintentar catálogo
+        </button>
+      </div>
+    }
+
     @switch (pasoActual()) {
       @case (1) {
         <section class="tarjeta seccion-paso" aria-labelledby="titulo-paso-1">
@@ -94,6 +126,7 @@
           <app-solicitudes-lista
             [solicitudes]="solicitudes()"
             [eventos]="eventos()"
+            [catalogoAdicionales]="catalogoAdicionales()"
             [cargando]="cargandoSolicitudes()"
             [errorCarga]="errorSolicitudes()"
             (verDetalle)="abrirModalDetalle($event)"
@@ -106,6 +139,7 @@
         <app-solicitud-formulario
           #formularioPaso2
           [eventoSeleccionado]="eventoSeleccionado()"
+          [catalogoInput]="catalogoAdicionales()"
           [tienePendiente]="eventoSeleccionadoTienePendiente()"
           [borrador]="borradorPropuesta()"
           [enviando]="enviandoSolicitud()"
@@ -154,6 +188,117 @@
                 </table>
               </div>
 
+              <!-- Resumen y Comparativo de Adicionales -->
+              <div id="adicionalesSummaryContainerCliente">
+                @if (resumenComparativoAdicionalesPaso3(); as adicResumen) {
+                  <div class="resumen-adicionales-box">
+                    <div class="resumen-adicionales-cab">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
+                        <span class="resumen-adicionales-titulo">Resumen y Comparativo de Adicionales</span>
+                      </div>
+                      <span class="badge-tecnico badge-ensayo">
+                        Propuesta sujeta a revisión comercial
+                      </span>
+                    </div>
+
+                    <table class="tabla-comparativo-adicionales">
+                      <thead>
+                        <tr>
+                          <th>Adicional</th>
+                          <th>Datos actuales</th>
+                          <th>Cambios propuestos</th>
+                          <th style="text-align: right;">Tarifa</th>
+                          <th style="text-align: right;">Subtotal propuesto</th>
+                          <th style="text-align: center;">Variación</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @if (adicResumen.vacio) {
+                          <tr>
+                            <td colspan="6" style="text-align: center; color: var(--gris); padding: 14px;">
+                              No se registran adicionales contratados ni propuestos.
+                            </td>
+                          </tr>
+                        } @else {
+                          @for (fila of adicResumen.filas; track fila.id) {
+                            <tr [class.fila-adicional-modificada]="fila.modificada">
+                              <td><strong>{{ fila.nombre }}</strong></td>
+                              <td>{{ fila.datosActualesTexto }}</td>
+                              <td [class.celda-propuesta]="fila.modificada">{{ fila.cambiosPropuestosTexto }}</td>
+                              <td style="text-align: right;">{{ fila.tarifaTexto }}</td>
+                              <td style="text-align: right; font-weight: 600;">{{ fila.subtotalPropuestoTexto }}</td>
+                              <td style="text-align: center;">
+                                @if (fila.tipoVariacion === 'inc') {
+                                  <span class="badge-adic-variacion badge-adic-inc">{{ fila.variacionTexto }}</span>
+                                } @else if (fila.tipoVariacion === 'red') {
+                                  <span class="badge-adic-variacion badge-adic-red">{{ fila.variacionTexto }}</span>
+                                } @else {
+                                  <span class="badge-adic-variacion badge-adic-igual">{{ fila.variacionTexto }}</span>
+                                }
+                              </td>
+                            </tr>
+                          }
+                        }
+                      </tbody>
+                    </table>
+
+                    @if (adicResumen.errorCatalogoIncompleto) {
+                      <div class="alerta alerta-error" id="alertaErrorCatalogoPaso3" role="alert" style="margin-top: 12px; margin-bottom: 12px;">
+                        <p>{{ adicResumen.mensajeErrorCatalogo || 'Falta información del catálogo para calcular los adicionales.' }}</p>
+                        <button
+                          type="button"
+                          class="btn btn-sec btn-sm"
+                          id="btnReintentarCatalogoPaso3"
+                          (click)="cargarCatalogoAdicionales()"
+                        >
+                          Reintentar carga de catálogo
+                        </button>
+                      </div>
+                    }
+
+                    <div class="resumen-comercial-grid">
+                      <div class="item-duracion item-comercial">
+                        <small>Total actual de adicionales:</small>
+                        <strong class="comercial-valor">{{ adicResumen.totalActualTexto }}</strong>
+                        <span class="comercial-sub">{{ adicResumen.serviciosActualesCount }} servicio(s) registrado(s)</span>
+                      </div>
+                      <div class="item-duracion item-comercial">
+                        <small>Total propuesto de adicionales:</small>
+                        <strong class="comercial-valor">{{ adicResumen.totalPropuestoTexto }}</strong>
+                        <span class="comercial-sub">{{ adicResumen.serviciosPropuestosCount }} servicio(s) propuesto(s)</span>
+                      </div>
+                      <div class="item-duracion item-comercial">
+                        <small>Diferencia de adicionales:</small>
+                        <strong
+                          class="comercial-valor"
+                          [class.diff-mas]="adicResumen.tipoDiferencia === 'mas'"
+                          [class.diff-menos]="adicResumen.tipoDiferencia === 'menos'"
+                          [class.importe-no-aplica]="adicResumen.tipoDiferencia === 'neutro'"
+                        >
+                          {{ adicResumen.diferenciaTexto }}
+                        </strong>
+                        <span class="comercial-sub">{{ adicResumen.explicacionDiferencia }}</span>
+                      </div>
+                    </div>
+
+                    @if (adicResumen.tieneReduccion) {
+                      <div class="aviso aviso-info" style="margin-top: 12px; margin-bottom: 0; font-size: 12.5px;">
+                        <strong>Reducción de adicionales propuesta:</strong> La propuesta contempla una reducción neta de {{ adicResumen.diferenciaTexto }} en servicios adicionales respecto a su reserva actual. Esta disminución no genera devolución automática y estará sujeta a la liquidación final del asesor comercial.
+                      </div>
+                    }
+
+                    <p class="nota-adicionales-pie">
+                      * Importes referenciales para el prototipo. El costo de adicionales es independiente de las horas del auditorio y del cargo por modificación. Propuesta sujeta a revisión comercial.
+                    </p>
+                  </div>
+                }
+              </div>
+
               <!-- Motivo Registrado -->
               <div class="motivo-box-review" id="motivoReviewBox">
                 <strong>Motivo de la solicitud:</strong>
@@ -198,7 +343,7 @@
                     type="button"
                     class="btn btn-ok"
                     id="btnEnviarSolicitud"
-                    [disabled]="enviandoSolicitud() || eventoSeleccionadoTienePendiente()"
+                    [disabled]="enviandoSolicitud() || eventoSeleccionadoTienePendiente() || resumenComparativoAdicionalesPaso3().errorCatalogoIncompleto"
                     (click)="alEnviarSolicitud(borrador)"
                   >
                     @if (enviandoSolicitud()) {
@@ -269,7 +414,7 @@
                 </div>
                 <div class="confirmacion-meta-item">
                   <small>Fecha y hora de envío</small>
-                  <strong>{{ sol.fecha_creacion }}</strong>
+                  <strong>{{ formatearFechaHoraEnvio(sol.fecha_creacion) }}</strong>
                 </div>
                 <div class="confirmacion-meta-item">
                   <small>Estado</small>
@@ -277,7 +422,7 @@
                 </div>
                 <div class="confirmacion-meta-item" style="grid-column: 1 / -1;">
                   <small>Motivo indicado</small>
-                  <span>{{ sol.motivo }}</span>
+                  <span class="confirmacion-motivo-texto">{{ sol.motivo }}</span>
                 </div>
               </div>
             </div>
@@ -337,10 +482,18 @@
       >
         <div class="modal-header">
           <div>
-            <span class="modal-subtitulo">Solicitud #{{ solModal.id }}</span>
+            <span class="modal-subtitulo">Solicitud #{{ solModal.id }} &bull; Fecha y hora de env&iacute;o: {{ formatearFechaHoraEnvio(solModal.fecha_creacion) }}</span>
             <h3 id="titulo-modal-detalle">Detalle de la solicitud de modificación</h3>
           </div>
-          <span class="etiqueta etiqueta-pendiente">{{ solModal.estado }}</span>
+          <div class="modal-header-acciones">
+            <span class="etiqueta etiqueta-pendiente">{{ solModal.estado }}</span>
+            <button
+              type="button"
+              class="modal-close-btn"
+              aria-label="Cerrar modal"
+              (click)="cerrarModalDetalle()"
+            >&times;</button>
+          </div>
         </div>
 
         <div class="modal-body">
@@ -353,7 +506,6 @@
             <div class="modal-dato">
               <span class="modal-dato__label">Espacio</span>
               <strong>{{ obtenerEspacioSnapshot(solModal) }}</strong>
-              <span class="modal-dato__meta">Registrada: {{ solModal.fecha_creacion }}</span>
             </div>
           </div>
 
@@ -379,6 +531,108 @@
               </tbody>
             </table>
           </div>
+
+          @if (resumenComparativoModal(solModal); as modalAdic) {
+            <div class="resumen-adicionales-box">
+              <div class="resumen-adicionales-cab">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  </svg>
+                  <span class="resumen-adicionales-titulo">Resumen y Comparativo de Adicionales</span>
+                </div>
+                @if (modalAdic.disponible) {
+                  <span class="badge-tecnico badge-ensayo">
+                    Propuesta sujeta a revisión comercial
+                  </span>
+                }
+              </div>
+
+              @if (!modalAdic.disponible) {
+                <div class="adicionales-vacio-msg" id="msgAdicionalesNoDisponibleModal">
+                  Dato no disponible en este registro
+                </div>
+              } @else {
+                <table class="tabla-comparativo-adicionales">
+                  <thead>
+                    <tr>
+                      <th>Adicional</th>
+                      <th>Datos actuales</th>
+                      <th>Cambios propuestos</th>
+                      <th style="text-align: right;">Tarifa</th>
+                      <th style="text-align: right;">Subtotal propuesto</th>
+                      <th style="text-align: center;">Variación</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @if (modalAdic.vacio) {
+                      <tr>
+                        <td colspan="6" style="text-align: center; color: var(--gris); padding: 14px;">
+                          No se registran adicionales contratados ni propuestos.
+                        </td>
+                      </tr>
+                    } @else {
+                      @for (fila of modalAdic.filas; track fila.id) {
+                        <tr [class.fila-adicional-modificada]="fila.modificada">
+                          <td><strong>{{ fila.nombre }}</strong></td>
+                          <td>{{ fila.datosActualesTexto }}</td>
+                          <td [class.celda-propuesta]="fila.modificada">{{ fila.cambiosPropuestosTexto }}</td>
+                          <td style="text-align: right;">{{ fila.tarifaTexto }}</td>
+                          <td style="text-align: right; font-weight: 600;">{{ fila.subtotalPropuestoTexto }}</td>
+                          <td style="text-align: center;">
+                            @if (fila.tipoVariacion === 'inc') {
+                              <span class="badge-adic-variacion badge-adic-inc">{{ fila.variacionTexto }}</span>
+                            } @else if (fila.tipoVariacion === 'red') {
+                              <span class="badge-adic-variacion badge-adic-red">{{ fila.variacionTexto }}</span>
+                            } @else {
+                              <span class="badge-adic-variacion badge-adic-igual">{{ fila.variacionTexto }}</span>
+                            }
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+
+                <div class="resumen-comercial-grid">
+                  <div class="item-duracion item-comercial">
+                    <small>Total actual de adicionales:</small>
+                    <strong class="comercial-valor">{{ modalAdic.totalActualTexto }}</strong>
+                    <span class="comercial-sub">{{ modalAdic.serviciosActualesCount }} servicio(s) registrado(s)</span>
+                  </div>
+                  <div class="item-duracion item-comercial">
+                    <small>Total propuesto de adicionales:</small>
+                    <strong class="comercial-valor">{{ modalAdic.totalPropuestoTexto }}</strong>
+                    <span class="comercial-sub">{{ modalAdic.serviciosPropuestosCount }} servicio(s) propuesto(s)</span>
+                  </div>
+                  <div class="item-duracion item-comercial">
+                    <small>Diferencia de adicionales:</small>
+                    <strong
+                      class="comercial-valor"
+                      [class.diff-mas]="modalAdic.tipoDiferencia === 'mas'"
+                      [class.diff-menos]="modalAdic.tipoDiferencia === 'menos'"
+                      [class.importe-no-aplica]="modalAdic.tipoDiferencia === 'neutro'"
+                    >
+                      {{ modalAdic.diferenciaTexto }}
+                    </strong>
+                    <span class="comercial-sub">{{ modalAdic.explicacionDiferencia }}</span>
+                  </div>
+                </div>
+
+                @if (modalAdic.tieneReduccion) {
+                  <div class="aviso aviso-info" style="margin-top: 12px; margin-bottom: 0; font-size: 12.5px;">
+                    <strong>Reducción de adicionales propuesta:</strong> La propuesta contempla una reducción neta de {{ modalAdic.diferenciaTexto }} en servicios adicionales respecto a su reserva actual. Esta disminución no genera devolución automática y estará sujeta a la liquidación final del asesor comercial.
+                  </div>
+                }
+
+                <p class="nota-adicionales-pie">
+                  * Importes referenciales para el prototipo. El costo de adicionales es independiente de las horas del auditorio y del cargo por modificación. Propuesta sujeta a revisión comercial.
+                </p>
+              }
+            </div>
+          }
 
           <div class="modal-motivo">
             <span class="modal-dato__label">Motivo de la solicitud</span>
@@ -451,3 +705,4 @@
     </div>
   }
 </div>
+}

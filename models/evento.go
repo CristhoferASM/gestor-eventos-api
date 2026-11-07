@@ -27,4 +27,7 @@ type Evento struct {
 	EnsayoFecha          string `json:"ensayo_fecha"`
 	EnsayoHoraInicio     string `json:"ensayo_hora_inicio"`
 	EnsayoHoraFin        string `json:"ensayo_hora_fin"`
+
+	// Adicionales contratados vigentes
+	Adicionales []AdicionalItem `json:"adicionales"`
 }

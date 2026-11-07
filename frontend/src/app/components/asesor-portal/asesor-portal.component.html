@@ -1,0 +1,1665 @@
+<div class="layout-portal">
+  <header class="cabecera cabecera-asesor">
+    <div class="marca">SHOWTECH <span>SOLUTIONS</span></div>
+    <div class="cabecera-acciones">
+      <button
+        type="button"
+        class="btn-demo btn-volver-cliente"
+        (click)="volverACliente.emit()"
+        title="Abrir portal del cliente"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        <span>&larr; Vista del Cliente</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="contenedor-portal">
+    <div class="encabezado-seccion">
+      <h1>Modificar datos del evento</h1>
+      <p class="sub">Actualice la información del evento, verifique la disponibilidad del auditorio y confirme los cambios en el sistema.</p>
+    </div>
+
+    <!-- Barra de progreso de 4 pasos del asesor -->
+    <nav class="pasos" aria-label="Pasos de gestión del asesor comercial">
+      <button
+        type="button"
+        class="paso"
+        id="stepBtn1"
+        [class.activo]="pasoActual() === 1"
+        [class.completado]="pasoActual() > 1"
+        (click)="irPaso(1)"
+      >
+        <span class="num" aria-hidden="true">1</span>
+        <span>Seleccionar evento</span>
+      </button>
+
+      <button
+        type="button"
+        class="paso"
+        id="stepBtn2"
+        [class.activo]="pasoActual() === 2"
+        [class.completado]="pasoActual() > 2"
+        [disabled]="!eventoSeleccionadoId()"
+        (click)="irPaso(2)"
+      >
+        <span class="num" aria-hidden="true">2</span>
+        <span>Modificar datos</span>
+      </button>
+
+      <button
+        type="button"
+        class="paso"
+        id="stepBtn3"
+        [class.activo]="pasoActual() === 3"
+        [class.completado]="pasoActual() > 3"
+        [disabled]="!eventoSeleccionadoId()"
+        (click)="irPaso(3)"
+      >
+        <span class="num" aria-hidden="true">3</span>
+        <span>Validar disponibilidad</span>
+      </button>
+
+      <button
+        type="button"
+        class="paso"
+        id="stepBtn4"
+        [class.activo]="pasoActual() === 4"
+        [class.completado]="pasoActual() > 4"
+        [disabled]="!eventoSeleccionadoId() || !comprobacionValidaVigente()"
+        (click)="irPaso(4)"
+      >
+        <span class="num" aria-hidden="true">4</span>
+        <span>Revisar y confirmar</span>
+      </button>
+    </nav>
+
+    <!-- =====================================================================
+         PASO 1: SELECCIONAR EVENTO, HISTORIAL Y BANDEJA DE SOLICITUDES
+         ===================================================================== -->
+    @if (pasoActual() === 1) {
+      <!-- 1. Selección de evento registrado -->
+      <section class="tarjeta" id="s1">
+        <h2>1. Seleccionar evento registrado</h2>
+
+        <div class="barra">
+          <input
+            type="text"
+            class="buscador"
+            id="buscar"
+            placeholder="Buscar por ID, nombre o espacio del evento..."
+            [ngModel]="filtroBuscador()"
+            (ngModelChange)="filtroBuscador.set($event)"
+            aria-label="Buscar por ID, nombre o espacio del evento"
+          />
+          <div class="contador-eventos" id="contadorEventos">
+            {{ textoContadorEventos() }}
+          </div>
+        </div>
+
+        <!-- Tabla Desktop de Eventos (8 columnas) -->
+        <div class="tabla-wrap tabla-desktop">
+          <table>
+            <thead>
+              <tr>
+                <th class="th-codigo">ID</th>
+                <th class="th-cliente">Cliente</th>
+                <th class="th-evento">Evento</th>
+                <th class="th-fecha">Fecha</th>
+                <th class="th-horario">Horario</th>
+                <th class="th-tecnicos">Tiempos técnicos</th>
+                <th class="th-estado">Estado</th>
+                <th class="th-accion num-der">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="tablaEventos">
+              @for (evt of eventosFiltrados(); track evt.id) {
+                <tr [class.fila-activa]="eventoSeleccionadoId() === evt.id">
+                  <td class="th-codigo col-codigo"><strong>{{ codigoEvento(evt.id) }}</strong></td>
+                  <td class="th-cliente col-cliente">{{ obtenerClienteEvento(evt) }}</td>
+                  <td class="th-evento col-evento">{{ evt.nombre }}</td>
+                  <td class="th-fecha col-fecha">{{ formatoFecha(evt.fecha) }}</td>
+                  <td class="th-horario col-horario">{{ evt.hora_inicio }} - {{ evt.hora_fin }}</td>
+                  <td class="th-tecnicos col-tecnicos">
+                    @if (obtenerItemsTiemposTecnicos(evt).length > 0) {
+                      <div class="tecnicos-compacto">
+                        @for (item of obtenerItemsTiemposTecnicos(evt); track item.etiqueta) {
+                          <span><strong>{{ item.etiqueta }}</strong> {{ item.detalle }}</span>
+                        }
+                      </div>
+                    } @else {
+                      <span class="texto-sin-tecnicos">-</span>
+                    }
+                  </td>
+                  <td class="th-estado col-estado">
+                    <span class="etiqueta et-confirmado insignia-estado">{{ evt.estado || 'Confirmado' }}</span>
+                  </td>
+                  <td class="th-accion col-accion num-der">
+                    <button
+                      type="button"
+                      class="btn btn-chico btn-sm"
+                      [class.btn-sec]="eventoSeleccionadoId() === evt.id"
+                      [class.btn-primario]="eventoSeleccionadoId() !== evt.id"
+                      (click)="seleccionarEvento(evt)"
+                    >
+                      {{ eventoSeleccionadoId() === evt.id ? 'Editando' : 'Seleccionar' }}
+                    </button>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="8" class="vacio tabla-vacia">No se encontraron eventos coincidentes con el criterio de búsqueda.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Tarjetas Móviles de Eventos -->
+        <div class="tarjetas-eventos-movil" id="tarjetasEventosMovil">
+          @for (evt of eventosFiltrados(); track evt.id) {
+            <div class="tarjeta-evento-item" [class.activa]="eventoSeleccionadoId() === evt.id">
+              <div class="tarjeta-evento-header tarjeta-evento-cab">
+                <span class="tarjeta-evento-codigo">{{ codigoEvento(evt.id) }}</span>
+                <span class="etiqueta et-confirmado insignia-estado">{{ evt.estado || 'Confirmado' }}</span>
+              </div>
+              <div class="tarjeta-evento-titulo">{{ evt.nombre }}</div>
+              <div class="tarjeta-evento-cliente"><strong>Cliente:</strong> {{ obtenerClienteEvento(evt) }}</div>
+              <div class="tarjeta-evento-datos">
+                <div>
+                  <small>Fecha</small>
+                  <strong>{{ formatoFecha(evt.fecha) }}</strong>
+                </div>
+                <div>
+                  <small>Horario</small>
+                  <strong>{{ evt.hora_inicio }} - {{ evt.hora_fin }}</strong>
+                </div>
+                <div class="tarjeta-evento-dato-completo">
+                  <small>Tiempos técnicos</small>
+                  @if (obtenerItemsTiemposTecnicos(evt).length > 0) {
+                    <div class="tecnicos-compacto">
+                      @for (item of obtenerItemsTiemposTecnicos(evt); track item.etiqueta) {
+                        <span><strong>{{ item.etiqueta }}</strong> {{ item.detalle }}</span>
+                      }
+                    </div>
+                  } @else {
+                    <span class="texto-sin-tecnicos">-</span>
+                  }
+                </div>
+              </div>
+              <div class="tarjeta-evento-pie">
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  [class.btn-sec]="eventoSeleccionadoId() === evt.id"
+                  [class.btn-primario]="eventoSeleccionadoId() !== evt.id"
+                  (click)="seleccionarEvento(evt)"
+                >
+                  {{ eventoSeleccionadoId() === evt.id ? 'Evento cargado (Editando)' : 'Seleccionar evento' }}
+                </button>
+              </div>
+            </div>
+          } @empty {
+            <div class="vacio">No se encontraron eventos coincidentes con el criterio de búsqueda.</div>
+          }
+        </div>
+
+        <!-- Banner de evento seleccionado para edición -->
+        @if (eventoSeleccionado()) {
+          <div class="banner-seleccionado" id="bannerSeleccionado">
+            <div class="banner-texto">
+              <small>Evento cargado actualmente para edición:</small>
+              <strong id="bannerTextoEvento">{{ codigoEvento(eventoSeleccionado()?.id) }} &bull; {{ eventoSeleccionado()?.nombre }}</strong>
+            </div>
+            <button type="button" class="btn btn-primario" (click)="irPaso(2)">
+              Continuar con este evento &rarr;
+            </button>
+          </div>
+        }
+
+        <p class="nota-ejemplo">* Haga clic en "Seleccionar" en la tabla para cargar cualquier evento en el formulario.</p>
+      </section>
+
+      <!-- 3. Bandeja de solicitudes de clientes (Tarjeta independiente) -->
+      <section class="tarjeta seccion-solicitudes-asesor">
+        <div class="solicitudes-asesor-cabecera">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+              <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            Bandeja de solicitudes de clientes
+          </h3>
+          <p class="subtexto">
+            Revise las solicitudes de modificación enviadas desde el portal de clientes con sus datos comparativos y motivo detallado.
+          </p>
+        </div>
+
+        <!-- Filtros de la bandeja -->
+        <div class="filtros-solicitudes-grid">
+          <div>
+            <label for="filtroSolicitudEvento">Filtrar por evento</label>
+            <input
+              type="text"
+              id="filtroSolicitudEvento"
+              placeholder="Nombre o ID del evento..."
+              [ngModel]="filtroSolicitudEvento()"
+              (ngModelChange)="filtroSolicitudEvento.set($event)"
+            />
+          </div>
+          <div>
+            <label for="filtroSolicitudEstado">Filtrar por estado</label>
+            <select
+              id="filtroSolicitudEstado"
+              [ngModel]="filtroSolicitudEstado()"
+              (ngModelChange)="filtroSolicitudEstado.set($event)"
+            >
+              <option value="">Todos los estados</option>
+              <option value="Pendiente de revisión">Pendiente de revisión</option>
+              <option value="Aprobada">Aprobada</option>
+              <option value="Rechazada">Rechazada</option>
+            </select>
+          </div>
+          <div>
+            <button
+              type="button"
+              class="btn btn-sec btn-limpiar-filtros"
+              (click)="filtroSolicitudEvento.set(''); filtroSolicitudEstado.set('')"
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabla compacta de 6 columnas de solicitudes -->
+        <div class="tabla-wrap tabla-desktop">
+          <table class="tabla-solicitudes">
+            <thead>
+              <tr>
+                <th class="th-codigo">Código</th>
+                <th class="th-evento">Evento</th>
+                <th class="th-fecha">Fecha de envío</th>
+                <th class="th-cambios">Cambios solicitados</th>
+                <th class="th-estado">Estado</th>
+                <th class="th-accion num-der">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (sol of solicitudesFiltradas(); track sol.id) {
+                <tr>
+                  <td class="th-codigo col-codigo"><strong>#{{ sol.id }}</strong></td>
+                  <td class="th-evento col-evento">{{ nombreEventoSolicitud(sol) }}</td>
+                  <td class="th-fecha col-fecha">{{ formatoEnvio(sol.fecha_creacion) }}</td>
+                  <td class="th-cambios col-cambios">{{ resumenCambios(sol) }}</td>
+                  <td class="th-estado col-estado">
+                    <span class="insignia-estado estado-pendiente">{{ sol.estado }}</span>
+                  </td>
+                  <td class="th-accion col-accion num-der">
+                    <button
+                      type="button"
+                      class="btn btn-sec btn-sm btn-revisar"
+                      (click)="abrirModalSolicitud(sol)"
+                    >
+                      Revisar solicitud
+                    </button>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="6" class="vacio tabla-vacia">No hay solicitudes registradas con los filtros seleccionados.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Tarjetas móviles de solicitudes -->
+        <div class="tarjetas-solicitudes-movil">
+          @for (sol of solicitudesFiltradas(); track sol.id) {
+            <div class="tarjeta-solicitud-card">
+              <div class="tarjeta-solicitud-cab">
+                <span class="codigo-solicitud">#{{ sol.id }}</span>
+                <span class="insignia-estado estado-pendiente">{{ sol.estado }}</span>
+              </div>
+              <div class="tarjeta-solicitud-evento">{{ nombreEventoSolicitud(sol) }}</div>
+              <div class="tarjeta-solicitud-info">
+                <div>
+                  <small>Fecha de envío</small>
+                  <span>{{ formatoEnvio(sol.fecha_creacion) }}</span>
+                </div>
+                <div>
+                  <small>Cambios</small>
+                  <span>{{ resumenCambios(sol) }}</span>
+                </div>
+              </div>
+              <div class="tarjeta-solicitud-pie">
+                <button
+                  type="button"
+                  class="btn btn-sec btn-sm"
+                  (click)="abrirModalSolicitud(sol)"
+                >
+                  Revisar solicitud
+                </button>
+              </div>
+            </div>
+          } @empty {
+            <div class="vacio">No hay solicitudes registradas con los filtros seleccionados.</div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- =====================================================================
+         PASO 2: MODIFICAR DATOS DEL EVENTO (BORRADOR DEL ASESOR)
+         ===================================================================== -->
+    @if (pasoActual() === 2 && borrador()) {
+      <section class="tarjeta" id="s2">
+        <div class="tarjeta-cabecera-flex">
+          <h2>2. Modificar datos del evento</h2>
+          <div class="etiqueta et-evento-activo" id="badgeEventoPaso2">
+            {{ codigoEvento(borrador()?.evento_id) }} &bull; Confirmado
+          </div>
+        </div>
+
+        <form id="formModificarEvento" novalidate (submit)="$event.preventDefault()">
+          <!-- Bloque 1: Información General y Contacto -->
+          <h3>Información general y contacto</h3>
+          <div class="form">
+            <div>
+              <label for="eventCode">Identificador del evento</label>
+              <input type="text" id="eventCode" [value]="codigoEvento(borrador()?.evento_id)" readonly />
+              <span class="ayuda">Identificador del evento (solo lectura).</span>
+            </div>
+
+            <div>
+              <label for="eventSpace">Auditorio asignado</label>
+              <input type="text" id="eventSpace" [value]="eventoSeleccionado()?.espacio || 'Auditorio Showtech'" readonly />
+              <span class="ayuda">Espacio institucional (solo lectura).</span>
+            </div>
+
+            <div class="completo">
+              <label for="eventName">
+                Nombre de la convocatoria o evento <span class="req">*</span>
+                @if (cambioNombre()) {
+                  <span class="mod-pill">Modificado</span>
+                }
+              </label>
+              <input
+                type="text"
+                id="eventName"
+                maxlength="120"
+                required
+                placeholder="Ej. Ceremonia de graduación"
+                [class.campo-modificado]="cambioNombre()"
+                [ngModel]="borrador()!.nombre"
+                (ngModelChange)="actualizarCampoBorrador('nombre', $event)"
+                name="eventName"
+              />
+            </div>
+
+            <div>
+              <label for="eventClient">
+                Cliente (nombre o razón social)
+              </label>
+              <input
+                type="text"
+                id="eventClient"
+                readonly
+                [value]="obtenerClienteEvento(eventoSeleccionado())"
+                placeholder="Ej. Promoción Horizonte 2026"
+              />
+            </div>
+
+            <div>
+              <label for="eventContact">
+                Persona de contacto <span class="req">*</span>
+                @if (cambioContacto()) {
+                  <span class="mod-pill">Modificado</span>
+                }
+              </label>
+              <input
+                type="text"
+                id="eventContact"
+                maxlength="80"
+                required
+                placeholder="Nombre y celular"
+                [class.campo-modificado]="cambioContacto()"
+                [ngModel]="borrador()!.contacto"
+                (ngModelChange)="actualizarCampoBorrador('contacto', $event)"
+                name="eventContact"
+              />
+            </div>
+
+            <div>
+              <label for="eventPhone">
+                Teléfono de contacto
+                @if (cambioTelefono()) {
+                  <span class="mod-pill">Modificado</span>
+                }
+              </label>
+              <input
+                type="tel"
+                id="eventPhone"
+                maxlength="25"
+                placeholder="Ej. 998 765 432"
+                [class.campo-modificado]="cambioTelefono()"
+                [ngModel]="borrador()!.telefono"
+                (ngModelChange)="actualizarCampoBorrador('telefono', $event)"
+                name="eventPhone"
+              />
+            </div>
+
+            <div>
+              <label for="eventEmail">
+                Correo electrónico
+                @if (cambioCorreo()) {
+                  <span class="mod-pill">Modificado</span>
+                }
+              </label>
+              <input
+                type="email"
+                id="eventEmail"
+                maxlength="80"
+                placeholder="Ej. contacto@cliente.com"
+                [class.campo-modificado]="cambioCorreo()"
+                [ngModel]="borrador()!.correo"
+                (ngModelChange)="actualizarCampoBorrador('correo', $event)"
+                name="eventEmail"
+              />
+            </div>
+
+            <div class="completo">
+              <label for="requestedBy">
+                Cambio solicitado por <span class="opc">(canal opcional)</span>
+              </label>
+              <select
+                id="requestedBy"
+                [ngModel]="borrador()!.solicitado_por"
+                (ngModelChange)="actualizarCampoBorrador('solicitado_por', $event)"
+                name="requestedBy"
+              >
+                <option value="">-- Sin especificar canal --</option>
+                <option value="Cliente">Cliente</option>
+                <option value="Asesor comercial">Asesor comercial</option>
+              </select>
+              <span class="ayuda">Canal de origen de la propuesta (registro local de gestión interna; no constituye identidad autenticada ni registro de auditoría).</span>
+            </div>
+
+            <div class="completo">
+              <label for="eventNotes">
+                Observaciones y requerimientos técnicos <span class="opc">(opcional)</span>
+                @if (cambioObservaciones()) {
+                  <span class="mod-pill">Modificado</span>
+                }
+              </label>
+              <textarea
+                id="eventNotes"
+                rows="2"
+                maxlength="300"
+                placeholder="Requerimientos de audio, micrófonos, pantalla LED, distribución, etc."
+                [class.campo-modificado]="cambioObservaciones()"
+                [ngModel]="borrador()!.observaciones"
+                (ngModelChange)="actualizarCampoBorrador('observaciones', $event)"
+                name="eventNotes"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Bloque 2: Fecha y Horario del Evento -->
+          <div class="bloque-fecha-evento">
+            <h3 class="titulo-fecha-evento">Fecha y horario del evento</h3>
+            <div class="insignia-evento-wrap">
+              <span class="badge-tecnico badge-evento">EVENTO PRINCIPAL</span>
+            </div>
+            <div class="form form-evento-principal">
+              <div>
+                <label for="eventDate">
+                  Fecha del evento <span class="req">*</span>
+                  @if (cambioFecha()) {
+                    <span class="mod-pill">Modificado</span>
+                  }
+                </label>
+                <div class="campo-fecha-wrap" id="wrap_eventDate">
+                  <input
+                    type="date"
+                    id="eventDate"
+                    class="input-fecha"
+                    required
+                    [class.campo-modificado]="cambioFecha()"
+                    [class.input-error]="errorCampoHorario('eventDate')"
+                    [ngModel]="borrador()!.fecha"
+                    (ngModelChange)="actualizarFechaEvento($event)"
+                    name="eventDate"
+                  />
+                  <span class="icono-calendario" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                  </span>
+                </div>
+                @if (errorCampoHorario('eventDate')) {
+                  <span class="msg-error-campo">{{ errorCampoHorario('eventDate') }}</span>
+                }
+              </div>
+
+              <div>
+                <label for="eventStartTime">
+                  Hora de inicio del evento <span class="req">*</span>
+                  @if (cambioHoraInicio()) {
+                    <span class="mod-pill">Modificado</span>
+                  }
+                </label>
+                <div class="campo-hora-wrap" id="wrap_eventStartTime">
+                  <input
+                    type="time"
+                    id="eventStartTime"
+                    class="input-hora"
+                    required
+                    [class.campo-modificado]="cambioHoraInicio()"
+                    [class.input-error]="errorCampoHorario('eventStartTime')"
+                    [ngModel]="borrador()!.hora_inicio"
+                    (ngModelChange)="actualizarCampoBorrador('hora_inicio', $event)"
+                    name="eventStartTime"
+                  />
+                  <span class="icono-reloj" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                  </span>
+                </div>
+                @if (errorCampoHorario('eventStartTime')) {
+                  <span class="msg-error-campo">{{ errorCampoHorario('eventStartTime') }}</span>
+                }
+              </div>
+
+              <div>
+                <label for="eventEndTime">
+                  Hora de fin del evento <span class="req">*</span>
+                  @if (cambioHoraFin()) {
+                    <span class="mod-pill">Modificado</span>
+                  }
+                </label>
+                <div class="campo-hora-wrap" id="wrap_eventEndTime">
+                  <input
+                    type="time"
+                    id="eventEndTime"
+                    class="input-hora"
+                    required
+                    [class.campo-modificado]="cambioHoraFin()"
+                    [class.input-error]="errorCampoHorario('eventEndTime')"
+                    [ngModel]="borrador()!.hora_fin"
+                    (ngModelChange)="actualizarCampoBorrador('hora_fin', $event)"
+                    name="eventEndTime"
+                  />
+                  <span class="icono-reloj" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                  </span>
+                </div>
+                @if (errorCampoHorario('eventEndTime')) {
+                  <span class="msg-error-campo">{{ errorCampoHorario('eventEndTime') }}</span>
+                }
+              </div>
+            </div>
+            <p class="ayuda" style="margin-top: 6px;">* Horario regular de funcionamiento del auditorio: 06:00 a 22:00. Evento, montaje y desmontaje deben ocurrir el mismo día.</p>
+          </div>
+
+          <!-- Bloque 3: Tiempos Técnicos Adicionales -->
+          <div class="contenedor-tiempos-tecnicos grid-adicionales">
+            <!-- Montaje -->
+            <div class="caja-adicional caja-montaje" [class.desactivada]="!borrador()!.has_montaje" id="panelMontaje">
+              <div class="caja-adicional-cabecera">
+                <label class="check-label" for="chkMontaje">
+                  <input
+                    type="checkbox"
+                    id="chkMontaje"
+                    [ngModel]="borrador()!.has_montaje"
+                    (ngModelChange)="alternarMontaje($event)"
+                    name="chkMontaje"
+                  />
+                  <span>Requiere montaje previo</span>
+                </label>
+                <span class="badge-tecnico badge-montaje">MONTAJE TÉCNICO</span>
+              </div>
+              @if (borrador()!.has_montaje) {
+                <div class="campos-adicional" id="fieldsMontaje">
+                  <div class="form-tecnico">
+                    <div class="campo-tecnico-fecha">
+                      <label for="montajeDate">
+                        Fecha <span class="req">*</span>
+                        @if (cambioMontajeFecha()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-fecha-wrap" id="wrap_montajeDate">
+                        <input
+                          type="date"
+                          id="montajeDate"
+                          class="input-fecha"
+                          [class.campo-modificado]="cambioMontajeFecha()"
+                          [class.input-error]="errorCampoHorario('montajeDate')"
+                          [ngModel]="borrador()!.montaje_fecha"
+                          (ngModelChange)="actualizarCampoBorrador('montaje_fecha', $event)"
+                          name="montajeDate"
+                        />
+                        <span class="icono-calendario" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('montajeDate')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('montajeDate') }}</span>
+                      }
+                    </div>
+                    <div class="campo-tecnico-inicio">
+                      <label for="montajeStartTime">
+                        Hora de inicio <span class="req">*</span>
+                        @if (cambioMontajeInicio()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-hora-wrap" id="wrap_montajeStartTime">
+                        <input
+                          type="time"
+                          id="montajeStartTime"
+                          class="input-hora"
+                          [class.campo-modificado]="cambioMontajeInicio()"
+                          [class.input-error]="errorCampoHorario('montajeStartTime')"
+                          [ngModel]="borrador()!.montaje_hora_inicio"
+                          (ngModelChange)="actualizarCampoBorrador('montaje_hora_inicio', $event)"
+                          name="montajeStartTime"
+                        />
+                        <span class="icono-reloj" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('montajeStartTime')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('montajeStartTime') }}</span>
+                      }
+                    </div>
+                    <div class="campo-tecnico-fin">
+                      <label for="montajeEndTime">
+                        Hora de fin <span class="req">*</span>
+                        @if (cambioMontajeFin()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-hora-wrap" id="wrap_montajeEndTime">
+                        <input
+                          type="time"
+                          id="montajeEndTime"
+                          class="input-hora"
+                          [class.campo-modificado]="cambioMontajeFin()"
+                          [class.input-error]="errorCampoHorario('montajeEndTime')"
+                          [ngModel]="borrador()!.montaje_hora_fin"
+                          (ngModelChange)="actualizarCampoBorrador('montaje_hora_fin', $event)"
+                          name="montajeEndTime"
+                        />
+                        <span class="icono-reloj" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('montajeEndTime')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('montajeEndTime') }}</span>
+                      }
+                    </div>
+                  </div>
+                  <span class="ayuda">* Por defecto finaliza al comenzar el evento.</span>
+                </div>
+              }
+            </div>
+
+            <!-- Desmontaje -->
+            <div class="caja-adicional caja-desmontaje" [class.desactivada]="!borrador()!.has_desmontaje" id="panelDesmontaje">
+              <div class="caja-adicional-cabecera">
+                <label class="check-label" for="chkDesmontaje">
+                  <input
+                    type="checkbox"
+                    id="chkDesmontaje"
+                    [ngModel]="borrador()!.has_desmontaje"
+                    (ngModelChange)="alternarDesmontaje($event)"
+                    name="chkDesmontaje"
+                  />
+                  <span>Requiere desmontaje posterior</span>
+                </label>
+                <span class="badge-tecnico badge-desmontaje">DESMONTAJE TÉCNICO</span>
+              </div>
+              @if (borrador()!.has_desmontaje) {
+                <div class="campos-adicional" id="fieldsDesmontaje">
+                  <div class="form-tecnico">
+                    <div class="campo-tecnico-fecha">
+                      <label for="desmontajeDate">
+                        Fecha <span class="req">*</span>
+                        @if (cambioDesmontajeFecha()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-fecha-wrap" id="wrap_desmontajeDate">
+                        <input
+                          type="date"
+                          id="desmontajeDate"
+                          class="input-fecha"
+                          [class.campo-modificado]="cambioDesmontajeFecha()"
+                          [class.input-error]="errorCampoHorario('desmontajeDate')"
+                          [ngModel]="borrador()!.desmontaje_fecha"
+                          (ngModelChange)="actualizarCampoBorrador('desmontaje_fecha', $event)"
+                          name="desmontajeDate"
+                        />
+                        <span class="icono-calendario" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('desmontajeDate')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('desmontajeDate') }}</span>
+                      }
+                    </div>
+                    <div class="campo-tecnico-inicio">
+                      <label for="desmontajeStartTime">
+                        Hora de inicio <span class="req">*</span>
+                        @if (cambioDesmontajeInicio()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-hora-wrap" id="wrap_desmontajeStartTime">
+                        <input
+                          type="time"
+                          id="desmontajeStartTime"
+                          class="input-hora"
+                          [class.campo-modificado]="cambioDesmontajeInicio()"
+                          [class.input-error]="errorCampoHorario('desmontajeStartTime')"
+                          [ngModel]="borrador()!.desmontaje_hora_inicio"
+                          (ngModelChange)="actualizarCampoBorrador('desmontaje_hora_inicio', $event)"
+                          name="desmontajeStartTime"
+                        />
+                        <span class="icono-reloj" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('desmontajeStartTime')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('desmontajeStartTime') }}</span>
+                      }
+                    </div>
+                    <div class="campo-tecnico-fin">
+                      <label for="desmontajeEndTime">
+                        Hora de fin <span class="req">*</span>
+                        @if (cambioDesmontajeFin()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-hora-wrap" id="wrap_desmontajeEndTime">
+                        <input
+                          type="time"
+                          id="desmontajeEndTime"
+                          class="input-hora"
+                          [class.campo-modificado]="cambioDesmontajeFin()"
+                          [class.input-error]="errorCampoHorario('desmontajeEndTime')"
+                          [ngModel]="borrador()!.desmontaje_hora_fin"
+                          (ngModelChange)="actualizarCampoBorrador('desmontaje_hora_fin', $event)"
+                          name="desmontajeEndTime"
+                        />
+                        <span class="icono-reloj" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('desmontajeEndTime')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('desmontajeEndTime') }}</span>
+                      }
+                    </div>
+                  </div>
+                  <span class="ayuda">* Por defecto inicia al concluir el evento.</span>
+                </div>
+              }
+            </div>
+
+            <!-- Ensayo -->
+            <div class="caja-adicional caja-ensayo" [class.desactivada]="!borrador()!.has_ensayo" id="panelEnsayo">
+              <div class="caja-adicional-cabecera">
+                <label class="check-label" for="chkEnsayo">
+                  <input
+                    type="checkbox"
+                    id="chkEnsayo"
+                    [ngModel]="borrador()!.has_ensayo"
+                    (ngModelChange)="alternarEnsayo($event)"
+                    name="chkEnsayo"
+                  />
+                  <span>Requiere ensayo técnico previo</span>
+                  @if (ensayoRecienAnadido()) {
+                    <span class="mod-pill" id="modBadgeEnsayoAdded">Ensayo añadido</span>
+                  }
+                </label>
+                <span class="badge-tecnico badge-ensayo">ENSAYO TÉCNICO</span>
+              </div>
+              @if (borrador()!.has_ensayo) {
+                <div class="campos-adicional" id="fieldsEnsayo">
+                  <div class="form-tecnico">
+                    <div class="campo-tecnico-fecha">
+                      <label for="ensayoDate">
+                        Fecha <span class="req">*</span>
+                        @if (cambioEnsayoFecha()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-fecha-wrap" id="wrap_ensayoDate">
+                        <input
+                          type="date"
+                          id="ensayoDate"
+                          class="input-fecha"
+                          [class.campo-modificado]="cambioEnsayoFecha()"
+                          [class.input-error]="errorCampoHorario('ensayoDate')"
+                          [ngModel]="borrador()!.ensayo_fecha"
+                          (ngModelChange)="actualizarCampoBorrador('ensayo_fecha', $event)"
+                          name="ensayoDate"
+                        />
+                        <span class="icono-calendario" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('ensayoDate')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('ensayoDate') }}</span>
+                      }
+                    </div>
+                    <div class="campo-tecnico-inicio">
+                      <label for="ensayoStartTime">
+                        Hora de inicio <span class="req">*</span>
+                        @if (cambioEnsayoInicio()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-hora-wrap" id="wrap_ensayoStartTime">
+                        <input
+                          type="time"
+                          id="ensayoStartTime"
+                          class="input-hora"
+                          [class.campo-modificado]="cambioEnsayoInicio()"
+                          [class.input-error]="errorCampoHorario('ensayoStartTime')"
+                          [ngModel]="borrador()!.ensayo_hora_inicio"
+                          (ngModelChange)="actualizarCampoBorrador('ensayo_hora_inicio', $event)"
+                          name="ensayoStartTime"
+                        />
+                        <span class="icono-reloj" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('ensayoStartTime')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('ensayoStartTime') }}</span>
+                      }
+                    </div>
+                    <div class="campo-tecnico-fin">
+                      <label for="ensayoEndTime">
+                        Hora de fin <span class="req">*</span>
+                        @if (cambioEnsayoFin()) {
+                          <span class="mod-pill">Modificado</span>
+                        }
+                      </label>
+                      <div class="campo-hora-wrap" id="wrap_ensayoEndTime">
+                        <input
+                          type="time"
+                          id="ensayoEndTime"
+                          class="input-hora"
+                          [class.campo-modificado]="cambioEnsayoFin()"
+                          [class.input-error]="errorCampoHorario('ensayoEndTime')"
+                          [ngModel]="borrador()!.ensayo_hora_fin"
+                          (ngModelChange)="actualizarCampoBorrador('ensayo_hora_fin', $event)"
+                          name="ensayoEndTime"
+                        />
+                        <span class="icono-reloj" aria-hidden="true">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                          </svg>
+                        </span>
+                      </div>
+                      @if (errorCampoHorario('ensayoEndTime')) {
+                        <span class="msg-error-campo">{{ errorCampoHorario('ensayoEndTime') }}</span>
+                      }
+                    </div>
+                  </div>
+                  <span class="ayuda">* El ensayo debe finalizar antes del evento y no cruzarse con el montaje.</span>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Cronograma propuesto -->
+          <div class="resumen-horario-box" id="resumenHorarioBox">
+            <div class="resumen-horario-titulo">CRONOGRAMA PROPUESTO:</div>
+            <div class="resumen-horario-items" id="resumenHorarioItems">
+              @for (item of franjasCronogramaPropuesto(); track item.tipo) {
+                <span class="timeline-pill" [ngClass]="item.tipo">{{ item.label }}</span>
+              } @empty {
+                <span style="color:var(--gris); font-size:13px;">Ingrese los horarios para visualizar el cronograma propuesto.</span>
+              }
+            </div>
+          </div>
+
+          <!-- Bloque Adicionales del Evento -->
+          <div class="seccion-adicionales-evento" id="seccionAdicionalesAsesor">
+            <div class="adicionales-cabecera">
+              <div>
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  </svg>
+                  Adicionales del evento
+                </h3>
+                <p class="ayuda" style="margin-top: 2px; margin-bottom: 8px;">
+                  Gestione los recursos y servicios adicionales solicitados para el evento.
+                  <span class="nota-referencial-prototipo">Importes referenciales para el prototipo</span>
+                </p>
+              </div>
+            </div>
+
+            <!-- Formulario de captura y edición de adicional -->
+            <div class="adicionales-form-card">
+              <div class="adicionales-form-grid">
+                <div class="campo-adicional-item campo-adic-select">
+                  <label for="selAdicional">Adicional</label>
+                  <select
+                    id="selAdicional"
+                    class="select-adicional"
+                    [ngModel]="adicionalSeleccionadoId()"
+                    (ngModelChange)="adicionalSeleccionadoId.set($event)"
+                    name="selAdicional"
+                  >
+                    @for (cat of catalogoAdicionales(); track cat.id) {
+                      <option [value]="cat.id">
+                        {{ cat.nombre }} ({{ formatoMoneda(cat.tarifa_hora) }} / h)
+                      </option>
+                    }
+                  </select>
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="numAdicionalCantidad" id="lblAdicionalCantidad">Cantidad de unidades</label>
+                  <input
+                    type="number"
+                    id="numAdicionalCantidad"
+                    min="1"
+                    step="1"
+                    class="input-numero"
+                    [ngModel]="adicionalCantidad()"
+                    (ngModelChange)="adicionalCantidad.set($event)"
+                    name="numAdicionalCantidad"
+                  />
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="numAdicionalHoras">Horas de uso</label>
+                  <input
+                    type="number"
+                    id="numAdicionalHoras"
+                    min="1"
+                    step="1"
+                    class="input-numero"
+                    [ngModel]="adicionalHoras()"
+                    (ngModelChange)="adicionalHoras.set($event)"
+                    name="numAdicionalHoras"
+                  />
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="txtAdicionalTarifa">Tarifa por hora</label>
+                  <input
+                    type="text"
+                    id="txtAdicionalTarifa"
+                    readonly
+                    class="input-readonly"
+                    [value]="formatoMoneda(adicionalCatalogoActual()?.tarifa_hora) + ' / h'"
+                  />
+                </div>
+
+                <div class="campo-adicional-item">
+                  <label for="txtAdicionalSubtotal">Subtotal</label>
+                  <input
+                    type="text"
+                    id="txtAdicionalSubtotal"
+                    readonly
+                    class="input-readonly subtotal-destacado"
+                    [value]="formatoMoneda(adicionalSubtotalCalculado())"
+                  />
+                </div>
+
+                <div class="campo-adicional-accion">
+                  <button
+                    type="button"
+                    class="btn btn-primario"
+                    id="btnAgregarAdicional"
+                    (click)="agregarOActualizarAdicional()"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>{{ adicionalModoEdicion() ? 'Actualizar adicional' : 'Agregar adicional' }}</span>
+                  </button>
+                  @if (adicionalModoEdicion()) {
+                    <button
+                      type="button"
+                      class="btn btn-sec btn-sm"
+                      (click)="cancelarEdicionAdicional()"
+                    >
+                      Cancelar
+                    </button>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabla de adicionales agregados -->
+            <div class="tabla-adicionales-wrap">
+              <table class="tabla-adicionales" id="tablaAdicionales">
+                <thead>
+                  <tr>
+                    <th>Adicional</th>
+                    <th style="text-align: center;">Cantidad</th>
+                    <th style="text-align: center;">Horas de uso</th>
+                    <th style="text-align: right;">Tarifa por hora</th>
+                    <th style="text-align: right;">Subtotal</th>
+                    <th style="text-align: center;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyAdicionales">
+                  @for (ad of borrador()!.adicionales; track ad.id) {
+                    <tr>
+                      <td><strong>{{ ad.nombre }}</strong></td>
+                      <td style="text-align: center;">{{ ad.cantidad }}</td>
+                      <td style="text-align: center;">{{ ad.horas }}</td>
+                      <td style="text-align: right;">{{ formatoMoneda(ad.tarifa_hora) }} / h</td>
+                      <td style="text-align: right;"><strong>{{ formatoMoneda(ad.subtotal) }}</strong></td>
+                      <td style="text-align: center;">
+                        <button
+                          type="button"
+                          class="btn-accion-adic btn-edit-adic"
+                          (click)="editarAdicional(ad)"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          class="btn-accion-adic btn-delete-adic"
+                          (click)="quitarAdicional(ad)"
+                        >
+                          Quitar
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                  @if (borrador()!.adicionales.length === 0) {
+                    <tr>
+                      <td colspan="6" class="adicionales-vacio-msg">
+                        No hay adicionales agregados para este evento.
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+                <tfoot>
+                  <tr class="fila-total-adicionales">
+                    <td colspan="4" style="text-align: right; font-weight: bold;">Total de adicionales:</td>
+                    <td style="text-align: right; font-weight: bold; color: var(--primario);" id="totalAdicionalesTabla">
+                      {{ formatoMoneda(totalAdicionalesBorrador()) }}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Acciones del Paso 2 -->
+          <div class="acciones">
+            <button type="button" class="btn btn-sec" (click)="irPaso(1)">&larr; Volver a la lista</button>
+            <div class="der">
+              <button type="button" class="btn btn-sec" (click)="solicitarDescarte()">
+                Descartar cambios
+              </button>
+              <button type="button" class="btn btn-primario" id="btnIrValidarPaso3" (click)="irPaso(3)">
+                Validar disponibilidad &rarr;
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+    }
+
+    <!-- =====================================================================
+         PASO 3: VALIDAR DISPONIBILIDAD
+         ===================================================================== -->
+    @if (pasoActual() === 3 && borrador()) {
+      <section class="tarjeta" id="s3">
+        <h2>3. Validar disponibilidad de horarios</h2>
+
+        <h3>Horario propuesto para validación en auditorio</h3>
+        <div class="grid" id="detalleHorarioValidar">
+          <div class="dato">
+            <small>Auditorio</small>
+            <strong>{{ eventoSeleccionado()?.espacio || 'Auditorio Showtech' }}</strong>
+          </div>
+          <div class="dato">
+            <small>Fecha del evento</small>
+            <strong>{{ formatoFecha(borrador()?.fecha) }}</strong>
+          </div>
+          <div class="dato">
+            <small>Montaje previo</small>
+            <strong>{{ textoMontajeValidacion() }}</strong>
+          </div>
+          <div class="dato">
+            <small>Horario del evento</small>
+            <strong>{{ borrador()?.hora_inicio }} - {{ borrador()?.hora_fin }}</strong>
+          </div>
+          <div class="dato">
+            <small>Desmontaje posterior</small>
+            <strong>{{ textoDesmontajeValidacion() }}</strong>
+          </div>
+          <div class="dato">
+            <small>Ensayo técnico</small>
+            <strong>{{ textoEnsayoValidacion() }}</strong>
+          </div>
+        </div>
+
+        <div class="acciones-validacion">
+          <button
+            type="button"
+            class="btn btn-primario"
+            id="btnCheckAvailability"
+            (click)="comprobarDisponibilidad()"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+            Comprobar disponibilidad en auditorio
+          </button>
+        </div>
+
+        <!-- Cuadro de Resultado de Disponibilidad -->
+        @if (estadoPresentacionComprobacion() === 'invalido') {
+          <div class="aviso aviso-error" id="availabilityFeedback" role="alert">
+            <div class="aviso-titulo" id="feedbackTitle">Inconsistencias detectadas en los horarios propuestos</div>
+            <div id="feedbackMessage">
+              <p style="margin: 0 0 6px 0;">Corrija las siguientes observaciones antes de poder validar la disponibilidad:</p>
+              <ul class="lista-errores-horario">
+                @for (err of validacionHorariosActual().errores; track $index) {
+                  <li>
+                    <button
+                      type="button"
+                      class="btn-enlace-error"
+                      (click)="enfocarCampoPaso2(err.campo)"
+                    >
+                      {{ err.mensaje }}
+                    </button>
+                  </li>
+                }
+              </ul>
+            </div>
+          </div>
+        } @else if (estadoPresentacionComprobacion() === 'valido') {
+          <div class="aviso aviso-alerta" id="availabilityFeedback">
+            <div class="aviso-titulo" id="feedbackTitle">Horarios coherentes. Disponibilidad pendiente de comprobar</div>
+            <div id="feedbackMessage">Los intervalos de tiempo cumplen con el rango operativo (06:00 a 22:00) y el orden cronológico en el borrador. La comprobación física contra otras reservas concurrentes, bloqueos institucionales y mantenimiento requiere el motor de disponibilidad del backend.</div>
+          </div>
+        }
+
+        <!-- Acciones del Paso 3 -->
+        <div class="acciones">
+          <button type="button" class="btn btn-sec" (click)="irPaso(2)">&larr; Modificar datos</button>
+          <div class="der">
+            <button
+              type="button"
+              class="btn btn-primario"
+              id="btnContinuarPaso4"
+              [disabled]="!comprobacionValidaVigente()"
+              (click)="irPaso(4)"
+            >
+              Continuar a revisión del borrador &rarr;
+            </button>
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- =====================================================================
+         PASO 4: REVISAR Y CONFIRMAR MODIFICACIONES
+         ===================================================================== -->
+    @if (pasoActual() === 4 && borrador()) {
+      <section class="tarjeta" id="s4">
+        <h2>4. Revisar y confirmar modificaciones</h2>
+
+        <!-- Comparativo de datos en Dos Columnas -->
+        <h3>Comparativo de datos (Actual vs Propuesto)</h3>
+        <div class="comparativo-wrap">
+          <table class="comparativo-tabla">
+            <thead>
+              <tr>
+                <th class="col-campo">Campo del evento</th>
+                <th class="col-actual">Datos actuales</th>
+                <th class="col-propuesto">Cambios propuestos</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of filasComparativaPaso4(); track fila.campo) {
+                <tr [class.fila-modificada]="fila.modificado">
+                  <td class="col-campo">{{ fila.campo }}</td>
+                  <td class="col-actual">{{ fila.actual }}</td>
+                  <td class="col-propuesto">{{ fila.propuesto }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Resumen de Horas e Importe Adicional -->
+        <div class="resumen-duracion-box">
+          <div class="resumen-duracion-cab">
+            <span class="resumen-duracion-titulo">Resumen de Horas e Importe Adicional</span>
+            <span class="badge-tecnico badge-evento">Asesor Comercial</span>
+          </div>
+
+          <div class="grid-duracion">
+            <div class="item-duracion">
+              <small>Duración anterior</small>
+              <strong>{{ resumenDuracion().durOrigTexto }}</strong>
+              <span>({{ eventoSeleccionado()?.hora_inicio }} - {{ eventoSeleccionado()?.hora_fin }})</span>
+            </div>
+            <div class="item-duracion">
+              <small>Duración propuesta</small>
+              <strong>{{ resumenDuracion().durActTexto }}</strong>
+              <span>({{ borrador()?.hora_inicio }} - {{ borrador()?.hora_fin }})</span>
+            </div>
+            <div class="item-duracion">
+              <small>Diferencia de tiempo</small>
+              <strong [class]="resumenDuracion().diffClase">{{ resumenDuracion().diffTexto }}</strong>
+              <span>{{ resumenDuracion().diffExplicacion }}</span>
+            </div>
+          </div>
+
+          <div class="resumen-comercial-grid">
+            <div class="item-duracion item-comercial">
+              <small>Horas adicionales:</small>
+              <strong class="comercial-valor">{{ resumenDuracion().horasAdicionalesValor }}</strong>
+              <span class="comercial-sub">{{ resumenDuracion().horasAdicionalesSub }}</span>
+            </div>
+            <div class="item-duracion item-comercial">
+              <small>Importe adicional:</small>
+              <strong class="comercial-valor importe-pendiente">Pendiente de cotización</strong>
+              <span class="comercial-sub">Requiere fijar tarifa comercial en siguiente etapa</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Comparativo de Adicionales -->
+        <h3>Resumen y comparativo de adicionales</h3>
+        @if (comparativoAdicionalesPaso4().filas.length > 0) {
+          <div class="comparativo-wrap">
+            <table class="comparativo-tabla">
+              <thead>
+                <tr>
+                  <th>Adicional</th>
+                  <th>Datos actuales</th>
+                  <th>Cambios propuestos</th>
+                  <th style="text-align: right;">Tarifa por hora</th>
+                  <th style="text-align: right;">Subtotal propuesto</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (fa of comparativoAdicionalesPaso4().filas; track fa.id) {
+                  <tr [class.fila-modificada]="fa.modificada">
+                    <td><strong>{{ fa.nombre }}</strong></td>
+                    <td>{{ fa.datosActualesTexto }}</td>
+                    <td>{{ fa.cambiosPropuestosTexto }}</td>
+                    <td style="text-align: right;">{{ fa.tarifaTexto }}</td>
+                    <td style="text-align: right;"><strong>{{ fa.subtotalPropuestoTexto }}</strong></td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4" style="text-align: right; font-weight: bold;">Total propuesto de adicionales:</td>
+                  <td style="text-align: right; font-weight: bold; color: var(--primario);">
+                    {{ formatoMoneda(comparativoAdicionalesPaso4().totalPropuesto) }}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        } @else {
+          <div class="aviso aviso-info" style="margin-bottom: 16px;">
+            No se han contratado servicios ni adicionales para este evento.
+          </div>
+        }
+
+        <!-- Botón para alternar la Ficha Completa -->
+        <div class="ficha-toggle-wrapper">
+          <button
+            type="button"
+            class="btn btn-ficha-toggle"
+            [attr.aria-expanded]="fichaAbierta()"
+            (click)="toggleFicha()"
+          >
+            <svg class="icono-doc" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <span>{{ fichaAbierta() ? 'Ocultar ficha completa del evento' : 'Ver ficha completa del evento' }}</span>
+          </button>
+        </div>
+
+        <!-- Ficha Completa Desplegable -->
+        @if (fichaAbierta()) {
+          <div class="contenedor-ficha-completa">
+            <div class="comprobante">
+              <div class="marca-agua">BORRADOR PRELIMINAR</div>
+              <div class="comp-cab">
+                <div>
+                  <div class="marca">SHOWTECH <span>SOLUTIONS S.A.C.</span></div>
+                  <small style="color:var(--gris)">RUC 20613979051 &bull; Gestión Operativa de Auditorio</small>
+                </div>
+                <div style="text-align:right">
+                  <strong>Ficha de Modificación de Evento</strong><br>
+                  <small style="color:var(--gris)">Borrador preliminar del asesor</small>
+                </div>
+              </div>
+
+              <div class="comp-sec">Datos del Evento</div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Identificador:</span>
+                <span class="comp-val"><strong>{{ codigoEvento(borrador()?.evento_id) }}</strong></span>
+              </div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Nombre de la convocatoria:</span>
+                <span class="comp-val">{{ borrador()?.nombre }}</span>
+              </div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Lugar asignado:</span>
+                <span class="comp-val">Auditorio Showtech</span>
+              </div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Fecha propuesta:</span>
+                <span class="comp-val">{{ formatoFecha(borrador()?.fecha) }}</span>
+              </div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Horarios técnicos:</span>
+                <span class="comp-val">
+                  @if (borrador()?.has_montaje) { Montaje: {{ borrador()?.montaje_hora_inicio }}-{{ borrador()?.montaje_hora_fin }} | }
+                  Evento: {{ borrador()?.hora_inicio }}-{{ borrador()?.hora_fin }}
+                  @if (borrador()?.has_desmontaje) { | Desmontaje: {{ borrador()?.desmontaje_hora_inicio }}-{{ borrador()?.desmontaje_hora_fin }} }
+                </span>
+              </div>
+              @if (borrador()?.has_ensayo) {
+                <div class="comp-fila">
+                  <span class="comp-etiq">Ensayo técnico:</span>
+                  <span class="comp-val">{{ formatoFecha(borrador()?.ensayo_fecha) }} ({{ borrador()?.ensayo_hora_inicio }} - {{ borrador()?.ensayo_hora_fin }})</span>
+                </div>
+              }
+
+              <div class="comp-sec">Cliente y Contacto</div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Persona de contacto:</span>
+                <span class="comp-val">{{ borrador()?.contacto }}</span>
+              </div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Teléfono:</span>
+                <span class="comp-val">{{ borrador()?.telefono || 'No especificado' }}</span>
+              </div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Correo:</span>
+                <span class="comp-val">{{ borrador()?.correo || 'No especificado' }}</span>
+              </div>
+              <div class="comp-fila">
+                <span class="comp-etiq">Canal de solicitud:</span>
+                <span class="comp-val">{{ borrador()?.solicitado_por || 'Sin especificar (registro local)' }}</span>
+              </div>
+
+              <div class="comp-sec">Adicionales Presupuestados</div>
+              @for (ad of borrador()?.adicionales; track ad.id) {
+                <div class="comp-fila">
+                  <span class="comp-etiq">{{ ad.nombre }} ({{ ad.cantidad }} ud x {{ ad.horas }} h):</span>
+                  <span class="comp-val">{{ formatoMoneda(ad.subtotal) }}</span>
+                </div>
+              } @empty {
+                <div class="comp-fila">
+                  <span class="comp-etiq">Sin adicionales:</span>
+                  <span class="comp-val">S/ 0.00</span>
+                </div>
+              }
+              <div class="comp-total">
+                <span>Total estimado de adicionales:</span>
+                <span>{{ formatoMoneda(totalAdicionalesBorrador()) }}</span>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Motivo de auditoría interna -->
+        <div class="form" style="margin-top: 16px;">
+          <div class="completo">
+            <label for="modificationReason">
+              Motivo de la modificación <span class="opc">(opcional para auditoría interna)</span>
+            </label>
+            <textarea
+              id="modificationReason"
+              rows="2"
+              placeholder="Ej. Solicitud de ajuste de horario por parte del cliente debido a retraso de vuelos..."
+              [ngModel]="motivoAuditoria()"
+              (ngModelChange)="motivoAuditoria.set($event)"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- Acciones del Paso 4 -->
+        <div class="acciones">
+          <button type="button" class="btn btn-sec" (click)="irPaso(2)">&larr; Volver a editar</button>
+          <div class="der">
+            <button type="button" class="btn btn-sec" (click)="solicitarDescarte()">
+              Descartar cambios
+            </button>
+            <button
+              type="button"
+              class="btn btn-ok"
+              id="btnGuardarDefinitivo"
+              disabled
+              title="Guardado definitivo no habilitado en esta etapa"
+            >
+              Confirmar y guardar cambios
+            </button>
+          </div>
+        </div>
+      </section>
+    }
+
+    <!-- Historial de Auditoría del Evento (al pie de los pasos como en el prototipo) -->
+    <details class="tarjeta" id="secHistorial" style="margin-top: 16px;">
+      <summary class="historial-toggle">
+        <span>Historial de auditoría de este evento (0 modificaciones registradas)</span>
+      </summary>
+      <div class="historial-contenido" id="historyListContainer">
+        <div class="aviso aviso-info" style="margin-bottom: 8px;">
+          Historial de auditoría no disponible en la API para este registro.
+        </div>
+        <p style="color:var(--gris); font-size:13px; margin: 4px 0 0 0;">No hay registros de modificaciones previas para este evento.</p>
+      </div>
+    </details>
+  </main>
+
+  <!-- =====================================================================
+       MODAL 1: REVISIÓN DE SOLICITUD DEL CLIENTE (DESDE LA BANDEJA DEL PASO 1)
+       ===================================================================== -->
+  @if (solicitudSeleccionadaModal()) {
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalRevisionTitulo">
+      <div class="modal-dialog modal-dialog-lg">
+        <div class="modal-header">
+          <h3 class="modal-title" id="modalRevisionTitulo">
+            Revisión de solicitud #{{ solicitudSeleccionadaModal()?.id }}
+          </h3>
+          <button
+            type="button"
+            class="modal-close-btn"
+            (click)="cerrarModalSolicitud()"
+            aria-label="Cerrar modal"
+          >&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="modal-grid-metadatos">
+            <div>
+              <small>Evento</small>
+              <strong>{{ nombreEventoSolicitud(solicitudSeleccionadaModal()) }}</strong>
+            </div>
+            <div>
+              <small>Identificador de evento</small>
+              <strong>{{ codigoEvento(solicitudSeleccionadaModal()?.evento_id) }}</strong>
+            </div>
+            <div>
+              <small>Fecha de envío</small>
+              <strong>{{ formatoEnvio(solicitudSeleccionadaModal()?.fecha_creacion) }}</strong>
+            </div>
+            <div>
+              <small>Solicitante</small>
+              <strong>{{ contactoSolicitud(solicitudSeleccionadaModal()) }}</strong>
+            </div>
+            <div>
+              <small>Estado</small>
+              <span class="insignia-estado estado-pendiente">{{ solicitudSeleccionadaModal()?.estado }}</span>
+            </div>
+          </div>
+
+          <!-- Motivo de la solicitud completo -->
+          <div class="modal-seccion-motivo">
+            <h4>Motivo de la solicitud</h4>
+            <div class="motivo-texto-completo">
+              {{ solicitudSeleccionadaModal()?.motivo }}
+            </div>
+          </div>
+
+          <!-- Comparativo entre Snapshot Original y Propuesto -->
+          <h4>Comparativo de datos propuestos (Solo lectura)</h4>
+          <div class="comparativo-wrap">
+            <table class="comparativo-tabla">
+              <thead>
+                <tr>
+                  <th>Campo del evento</th>
+                  <th>Datos registrados</th>
+                  <th>Cambios solicitados</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of filasComparativaSolicitud(solicitudSeleccionadaModal()!); track fila.campo) {
+                  <tr [class.fila-modificada]="fila.modificado">
+                    <td>{{ fila.campo }}</td>
+                    <td>{{ fila.actual }}</td>
+                    <td>{{ fila.propuesto }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Comparativo de Adicionales Históricos -->
+          @if (comparativoAdicionalesSolicitud(solicitudSeleccionadaModal()!).filas.length > 0) {
+            <h4 style="margin-top: 16px;">Adicionales solicitados (Tarifas y subtotales históricos)</h4>
+            <div class="comparativo-wrap">
+              <table class="comparativo-tabla">
+                <thead>
+                  <tr>
+                    <th>Adicional</th>
+                    <th>Datos registrados</th>
+                    <th>Cambios propuestos</th>
+                    <th style="text-align: right;">Tarifa</th>
+                    <th style="text-align: right;">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (fa of comparativoAdicionalesSolicitud(solicitudSeleccionadaModal()!).filas; track fa.id) {
+                    <tr [class.fila-modificada]="fa.modificada">
+                      <td><strong>{{ fa.nombre }}</strong></td>
+                      <td>{{ fa.datosActualesTexto }}</td>
+                      <td>{{ fa.cambiosPropuestosTexto }}</td>
+                      <td style="text-align: right;">{{ fa.tarifaTexto }}</td>
+                      <td style="text-align: right;"><strong>{{ fa.subtotalPropuestoTexto }}</strong></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          <div class="aviso aviso-info" style="margin-top: 14px; margin-bottom: 0;">
+            Esta vista es de solo lectura. Las opciones de resolución (aprobación/rechazo) se habilitarán en la siguiente etapa del sistema.
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primario" (click)="cerrarModalSolicitud()">
+            Cerrar revisión
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- =====================================================================
+       MODAL 2: CONFIRMAR DESCARTE DE CAMBIOS
+       ===================================================================== -->
+  @if (modalDescartarAbierto()) {
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalDiscardTitle">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title" id="modalDiscardTitle">¿Descartar modificaciones?</h3>
+          <button
+            type="button"
+            class="modal-close-btn"
+            (click)="cerrarModalDescartar()"
+            aria-label="Cerrar modal"
+          >&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Tiene modificaciones pendientes que aún no se han guardado. Si descarta los cambios, se restaurarán los valores registrados en el sistema.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sec" (click)="cerrarModalDescartar()">Continuar editando</button>
+          <button type="button" class="btn btn-danger" (click)="ejecutarDescarte()">Descartar cambios</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

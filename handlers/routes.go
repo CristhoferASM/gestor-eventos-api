@@ -32,6 +32,7 @@ func SetupRouter(eventoService *services.EventoService, solicitudService *servic
 	r.GET("/health", HealthHandler)
 	r.GET("/eventos", ListarEventosHandler(eventoService))
 	r.GET("/eventos/:id", DetalleEventoHandler(eventoService))
+	r.GET("/adicionales", ListarCatalogoAdicionalesHandler())
 	r.POST("/solicitudes", CrearSolicitudHandler(solicitudService))
 	r.GET("/solicitudes", ListarSolicitudesHandler(solicitudService))
 

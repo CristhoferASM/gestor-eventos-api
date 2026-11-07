@@ -116,7 +116,7 @@ flowchart LR
    - Valida que `fecha_propuesta` cumpla el formato `YYYY-MM-DD`.
    - Valida que `hora_inicio_propuesta` y `hora_fin_propuesta` tengan formato estricto `HH:MM` (dos dígitos, dos puntos y dos dígitos), estén entre `06:00` y `22:00` inclusive y que la hora de inicio sea anterior a la de fin.
    - Verifica que exista al menos un cambio en fecha u horario frente al evento original.
-   - Construye la entidad `models.Solicitud` con estado `"Pendiente de revisión"`, `fecha_creacion` generada a partir del reloj inyectado (actualmente en formato `"YYYY-MM-DD HH:MM:SS"`; su formato y zona horaria se revisarán para la persistencia definitiva en PostgreSQL) y los snapshots `datos_originales` y `datos_propuestos`.
+   - Construye la entidad `models.Solicitud` con estado `"Pendiente de revisión"`, `fecha_creacion` generada a partir del reloj inyectado en estándar RFC 3339 con offset de zona horaria explícito (`time.RFC3339`, p. ej. `2026-11-06T15:05:32-05:00` o `2026-11-06T20:05:32Z`) y los snapshots `datos_originales` y `datos_propuestos`.
    - Invoca a `solicitudRepo.CrearSolicitud(ctx, nuevaSolicitud)`.
 5. **Repositorio / Almacenamiento (`storage/memory.go`)**:
    - Adquiere el bloqueo de escritura (`s.mu.Lock()`).
@@ -277,5 +277,5 @@ try {
   - Para solicitudes históricas o creadas sin datos de contacto, la interfaz presenta `"Dato no disponible en este registro"`.
   - Para campos opcionales (`telefono`, `correo`, `observaciones`) que hayan sido explícitamente vaciados o no provistos en registros vigentes, la interfaz presenta `"Sin especificar"`.
 - **Persistencia en memoria volátil**: Los datos se reinician al detener el proceso. La integración con PostgreSQL y la definición entre ORM o SQL directo se abordarán en una siguiente etapa.
-- **Formato de `fecha_creacion`**: Se conserva temporalmente el formato `"YYYY-MM-DD HH:MM:SS"` para mantener el contrato JSON actual; su estandarización y zona horaria se definirán junto con el esquema de base de datos.
+- **Formato y manejo de `fecha_creacion`**: Las nuevas solicitudes se generan en estándar RFC 3339 con offset de zona horaria explícito (`time.RFC3339`, como `2026-11-06T15:05:32-05:00`). El frontend convierte de forma consistente estos instantes a la zona horaria `America/Lima` (`DD/MM/YYYY, HH:mm:ss`), manteniendo a la vez compatibilidad retroactiva completa con registros legacy que contengan formato `"YYYY-MM-DD HH:MM:SS"`.
 - **Operaciones de ciclo de vida, propiedad y seguridad**: Aún no están implementados la autenticación, el filtrado por propietario de eventos/solicitudes (por lo que la interfaz presenta el catálogo general de `"Eventos"` y `"Solicitudes de modificación"` sin simular cuentas de usuario) ni los flujos de retiro, aprobación o rechazo de solicitudes.

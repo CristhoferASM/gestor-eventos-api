@@ -10,22 +10,29 @@ import {
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+  AdicionalCatalogo,
+  AdicionalItem,
   ESTADO_PENDIENTE_REVISION,
   Evento,
   FilaComparativa,
+  ResumenComparativoAdicionales,
   Solicitud,
   SolicitudCreacionPayload,
   TEXTO_NO_DISPONIBLE,
   TEXTO_SIN_ESPECIFICAR,
+  calcularComparativoAdicionales,
   construirFilasComparativa,
+  formatearFechaHoraEnvio,
   formatearFechaVisual,
   formatearTextoObligatorio,
   formatearTextoOpcional,
 } from './models/gestor-eventos.models';
+import { Router, NavigationEnd } from '@angular/router';
 import { EventosApiService } from './services/eventos-api.service';
 import { EventosListaComponent } from './components/eventos-lista/eventos-lista.component';
 import { SolicitudFormularioComponent } from './components/solicitud-formulario/solicitud-formulario.component';
 import { SolicitudesListaComponent } from './components/solicitudes-lista/solicitudes-lista.component';
+import { AsesorPortalComponent } from './components/asesor-portal/asesor-portal.component';
 
 export type PasoPortal = 1 | 2 | 3 | 4;
 
@@ -36,12 +43,16 @@ export type PasoPortal = 1 | 2 | 3 | 4;
     EventosListaComponent,
     SolicitudFormularioComponent,
     SolicitudesListaComponent,
+    AsesorPortalComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
 export class App implements OnInit {
   private readonly api = inject(EventosApiService);
+  private readonly router = inject(Router, { optional: true });
+
+  readonly vistaActiva = signal<'cliente' | 'asesor'>('cliente');
 
   readonly textoSinEspecificar = TEXTO_SIN_ESPECIFICAR;
   readonly textoNoDisponible = TEXTO_NO_DISPONIBLE;
@@ -81,6 +92,41 @@ export class App implements OnInit {
     return construirFilasComparativa(ev, propData);
   });
 
+  readonly resumenComparativoAdicionalesPaso3 = computed<ResumenComparativoAdicionales>(() => {
+    const ev = this.eventoSeleccionado();
+    const b = this.borradorPropuesta();
+    const cat = this.catalogoAdicionales();
+    if (!ev || !b) {
+      return calcularComparativoAdicionales(undefined, undefined, cat);
+    }
+    let propItems: AdicionalItem[] = [];
+    if (b.adicionales_propuestos) {
+      propItems = b.adicionales_propuestos.map((p) => {
+        const c = cat.find((item) => item.id === p.id);
+        const orig = ev.adicionales?.find((a) => a.id === p.id);
+        const nombre = c?.nombre || orig?.nombre || `[Adicional no identificado: ${p.id}]`;
+        const tarifa = c?.tarifa_hora ?? orig?.tarifa_hora;
+        return {
+          id: p.id,
+          nombre,
+          unidad: c?.unidad || orig?.unidad || 'unidad',
+          cantidad: p.cantidad,
+          horas: p.horas,
+          tarifa_hora: tarifa !== undefined ? tarifa : (undefined as any),
+          subtotal: tarifa !== undefined ? Math.round(p.cantidad * p.horas * tarifa * 100) / 100 : 0,
+        };
+      });
+    } else {
+      propItems = ev.adicionales ?? [];
+    }
+    const res = calcularComparativoAdicionales(ev.adicionales, propItems, cat);
+    if (this.errorCatalogoAdicionales()) {
+      res.errorCatalogoIncompleto = true;
+      res.mensajeErrorCatalogo = this.errorCatalogoAdicionales();
+    }
+    return res;
+  });
+
   @ViewChild('formularioPaso2')
   formularioPaso2?: SolicitudFormularioComponent;
 
@@ -93,6 +139,9 @@ export class App implements OnInit {
   readonly pasoActual = signal<PasoPortal>(1);
 
   readonly eventos = signal<Evento[]>([]);
+  readonly catalogoAdicionales = signal<AdicionalCatalogo[]>([]);
+  readonly cargandoCatalogoAdicionales = signal<boolean>(false);
+  readonly errorCatalogoAdicionales = signal<string>('');
   readonly solicitudes = signal<Solicitud[]>([]);
   readonly eventoSeleccionado = signal<Evento | null>(null);
 
@@ -247,12 +296,53 @@ export class App implements OnInit {
   });
 
   ngOnInit(): void {
+    if (typeof window !== 'undefined' && window.location?.pathname?.includes('asesor')) {
+      this.vistaActiva.set('asesor');
+    }
+    this.router?.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        this.vistaActiva.set(event.urlAfterRedirects.includes('asesor') ? 'asesor' : 'cliente');
+      }
+    });
+
     this.cargarDatosIniciales();
+  }
+
+  cambiarVista(vista: 'cliente' | 'asesor'): void {
+    this.vistaActiva.set(vista);
+    if (this.router && this.router.config && this.router.config.length > 0) {
+      this.router.navigate([`/${vista}`]).catch(() => {});
+    }
   }
 
   cargarDatosIniciales(): void {
     this.cargarEventos();
     this.cargarSolicitudes();
+    this.cargarCatalogoAdicionales();
+  }
+
+  cargarCatalogoAdicionales(): void {
+    this.cargandoCatalogoAdicionales.set(true);
+    this.errorCatalogoAdicionales.set('');
+    this.api.obtenerCatalogoAdicionales().subscribe({
+      next: (cat) => {
+        this.cargandoCatalogoAdicionales.set(false);
+        if (Array.isArray(cat) && cat.length > 0) {
+          this.catalogoAdicionales.set(cat);
+          this.errorCatalogoAdicionales.set('');
+        } else {
+          this.errorCatalogoAdicionales.set(
+            'El catálogo de adicionales no devolvió servicios disponibles.'
+          );
+        }
+      },
+      error: () => {
+        this.cargandoCatalogoAdicionales.set(false);
+        this.errorCatalogoAdicionales.set(
+          'No se pudo cargar el catálogo de adicionales. Verifique la conexión con el servidor.'
+        );
+      },
+    });
   }
 
   cargarEventos(): void {
@@ -474,6 +564,17 @@ export class App implements OnInit {
     return construirFilasComparativa(sol.datos_originales, sol.datos_propuestos);
   }
 
+  resumenComparativoModal(sol: Solicitud | null): ResumenComparativoAdicionales {
+    if (!sol) {
+      return calcularComparativoAdicionales(undefined, undefined, this.catalogoAdicionales());
+    }
+    return calcularComparativoAdicionales(
+      sol.datos_originales?.adicionales,
+      sol.datos_propuestos?.adicionales,
+      this.catalogoAdicionales()
+    );
+  }
+
   formatearOpcional(valor: string | null | undefined): string {
     return formatearTextoOpcional(valor);
   }
@@ -484,6 +585,10 @@ export class App implements OnInit {
 
   formatearFechaVisual(fecha: string | null | undefined): string {
     return formatearFechaVisual(fecha);
+  }
+
+  formatearFechaHoraEnvio(fechaCreacion: string | null | undefined): string {
+    return formatearFechaHoraEnvio(fechaCreacion);
   }
 
   esCampoModificadoSnapshot(orig: string | null | undefined, prop: string | null | undefined): boolean {

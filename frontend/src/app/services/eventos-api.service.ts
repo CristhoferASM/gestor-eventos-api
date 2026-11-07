@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
+  AdicionalCatalogo,
   ApiErrorRespuesta,
   CrearSolicitudRespuesta,
   Evento,
@@ -26,6 +27,10 @@ export class EventosApiService {
 
   obtenerSolicitudes(): Observable<Solicitud[]> {
     return this.http.get<Solicitud[]>(`${this.baseUrl}/solicitudes`);
+  }
+
+  obtenerCatalogoAdicionales(): Observable<AdicionalCatalogo[]> {
+    return this.http.get<AdicionalCatalogo[]>(`${this.baseUrl}/adicionales`);
   }
 
   crearSolicitud(payload: SolicitudCreacionPayload): Observable<CrearSolicitudRespuesta> {

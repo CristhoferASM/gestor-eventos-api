@@ -3,6 +3,7 @@ package services_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -121,8 +122,8 @@ func TestSolicitudServiceRelojInyectadoYSnapshotsCompatibilidad(t *testing.T) {
 	if creada.Estado != "Pendiente de revisión" {
 		t.Errorf("se esperaba estado 'Pendiente de revisión', se obtuvo %q", creada.Estado)
 	}
-	if creada.FechaCreacion != "2026-10-30 15:30:45" {
-		t.Errorf("se esperaba fecha_creacion '2026-10-30 15:30:45', se obtuvo %q", creada.FechaCreacion)
+	if creada.FechaCreacion != instanteFijo.Format(time.RFC3339) {
+		t.Errorf("se esperaba fecha_creacion RFC3339 %q, se obtuvo %q", instanteFijo.Format(time.RFC3339), creada.FechaCreacion)
 	}
 
 	// Verificar snapshots originales y propuestos completos conservando los datos generales originales
@@ -148,8 +149,9 @@ func TestSolicitudServiceRelojInyectadoYSnapshotsCompatibilidad(t *testing.T) {
 		EnsayoFecha:          eventoAntes.EnsayoFecha,
 		EnsayoHoraInicio:     eventoAntes.EnsayoHoraInicio,
 		EnsayoHoraFin:        eventoAntes.EnsayoHoraFin,
+		Adicionales:          eventoAntes.Adicionales,
 	}
-	if creada.DatosOriginales != esperadoOrig {
+	if !reflect.DeepEqual(creada.DatosOriginales, esperadoOrig) {
 		t.Errorf("snapshot de datos_originales no coincide: %+v vs %+v", creada.DatosOriginales, esperadoOrig)
 	}
 
@@ -167,7 +169,7 @@ func TestSolicitudServiceRelojInyectadoYSnapshotsCompatibilidad(t *testing.T) {
 	desmontajeHoraFin := ""
 	esperadoProp.DesmontajeHoraInicio = desmontajeHoraInicio
 	esperadoProp.DesmontajeHoraFin = desmontajeHoraFin
-	if creada.DatosPropuestos != esperadoProp {
+	if !reflect.DeepEqual(creada.DatosPropuestos, esperadoProp) {
 		t.Errorf("snapshot de datos_propuestos no coincide: %+v vs %+v", creada.DatosPropuestos, esperadoProp)
 	}
 
@@ -176,7 +178,7 @@ func TestSolicitudServiceRelojInyectadoYSnapshotsCompatibilidad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error consultando evento 1: %v", err)
 	}
-	if eventoDespues != eventoAntes {
+	if !reflect.DeepEqual(eventoDespues, eventoAntes) {
 		t.Errorf("el evento original fue modificado: antes=%+v, despues=%+v", eventoAntes, eventoDespues)
 	}
 }
@@ -248,7 +250,7 @@ func TestSolicitudServiceInformacionGeneralYContacto(t *testing.T) {
 
 		// Verificar que el evento original sigue intacto
 		evDespues, _ := store.ObtenerEventoPorID(ctx, 1)
-		if evDespues != ev {
+		if !reflect.DeepEqual(evDespues, ev) {
 			t.Errorf("el evento original fue alterado: %+v", evDespues)
 		}
 	})
@@ -775,6 +777,228 @@ func TestSolicitudServiceTiemposTecnicos(t *testing.T) {
 					t.Errorf("error esperado contenía '%s', pero se obtuvo '%s'", tc.espera, err.Error())
 				}
 			})
+		}
+	})
+}
+
+func TestSolicitudServiceAdicionales(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("PermitirSolicitudCuandoElUnicoCambioSonAdicionales", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		// Evento 1 tiene 1 cochera (4h, S/ 10/h = S/ 40).
+		// Proponemos agregar una pantalla LED 5x4 (1 un, 3h = S/ 600) conservando la cochera
+		prop := []models.AdicionalPropuestoDTO{
+			{ID: "cochera", Cantidad: 1, Horas: 4},
+			{ID: "pantalla_led_5x4", Cantidad: 1, Horas: 3},
+		}
+
+		creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:              ev.ID,
+			Motivo:                "Se requiere pantalla LED adicional para la transmisión",
+			FechaPropuesta:        ev.Fecha,
+			HoraInicioPropuesta:   ev.HoraInicio,
+			HoraFinPropuesta:      ev.HoraFin,
+			AdicionalesPropuestos: &prop,
+		})
+		if err != nil {
+			t.Fatalf("error inesperado al proponer adicionales: %v", err)
+		}
+
+		if len(creada.DatosOriginales.Adicionales) != 1 {
+			t.Errorf("se esperaba 1 adicional original, se obtuvieron %d", len(creada.DatosOriginales.Adicionales))
+		}
+		if len(creada.DatosPropuestos.Adicionales) != 2 {
+			t.Errorf("se esperaban 2 adicionales propuestos, se obtuvieron %d", len(creada.DatosPropuestos.Adicionales))
+		}
+
+		// Validar que el backend recalculó los subtotales con el catálogo
+		var subtotalPantalla float64
+		for _, adic := range creada.DatosPropuestos.Adicionales {
+			if adic.ID == "pantalla_led_5x4" {
+				subtotalPantalla = adic.Subtotal
+				if adic.TarifaHora != 200.0 {
+					t.Errorf("tarifa de pantalla LED incorrecta: %v", adic.TarifaHora)
+				}
+			}
+		}
+		if subtotalPantalla != 600.0 {
+			t.Errorf("subtotal pantalla esperado 600.0, obtenido %v", subtotalPantalla)
+		}
+	})
+
+	t.Run("PermitirRetiroTotalDeAdicionalesConSliceVacio", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		propVacia := []models.AdicionalPropuestoDTO{}
+		creada, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:              ev.ID,
+			Motivo:                "Ya no se requiere servicio de cochera",
+			FechaPropuesta:        ev.Fecha,
+			HoraInicioPropuesta:   ev.HoraInicio,
+			HoraFinPropuesta:      ev.HoraFin,
+			AdicionalesPropuestos: &propVacia,
+		})
+		if err != nil {
+			t.Fatalf("error inesperado al retirar adicionales: %v", err)
+		}
+		if len(creada.DatosOriginales.Adicionales) != 1 {
+			t.Errorf("se esperaba 1 adicional original, se obtuvieron %d", len(creada.DatosOriginales.Adicionales))
+		}
+		if len(creada.DatosPropuestos.Adicionales) != 0 {
+			t.Errorf("se esperaban 0 adicionales propuestos tras retiro, se obtuvieron %d", len(creada.DatosPropuestos.Adicionales))
+		}
+	})
+
+	t.Run("RechazoDeAdicionalesConErroresDeValidacion", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		ev, _ := store.ObtenerEventoPorID(ctx, 1)
+
+		casos := []struct {
+			nombre string
+			prop   []models.AdicionalPropuestoDTO
+			espera string
+		}{
+			{
+				nombre: "Adicional no existe en catálogo",
+				prop:   []models.AdicionalPropuestoDTO{{ID: "dron_aereo", Cantidad: 1, Horas: 1}},
+				espera: "no existe en el catálogo",
+			},
+			{
+				nombre: "Cantidad cero",
+				prop:   []models.AdicionalPropuestoDTO{{ID: "cochera", Cantidad: 0, Horas: 2}},
+				espera: "La cantidad de unidades debe ser un número entero mayor a 0",
+			},
+			{
+				nombre: "Horas cero",
+				prop:   []models.AdicionalPropuestoDTO{{ID: "cochera", Cantidad: 1, Horas: 0}},
+				espera: "Las horas de uso deben ser un número entero mayor a 0",
+			},
+			{
+				nombre: "Adicional duplicado en propuesta",
+				prop: []models.AdicionalPropuestoDTO{
+					{ID: "cochera", Cantidad: 1, Horas: 2},
+					{ID: "cochera", Cantidad: 2, Horas: 3},
+				},
+				espera: "se encuentra duplicado en la propuesta",
+			},
+		}
+
+		for _, tc := range casos {
+			t.Run(tc.nombre, func(t *testing.T) {
+				_, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+					EventoID:              ev.ID,
+					Motivo:                "Prueba de validación de adicionales",
+					FechaPropuesta:        ev.Fecha,
+					HoraInicioPropuesta:   ev.HoraInicio,
+					HoraFinPropuesta:      ev.HoraFin,
+					AdicionalesPropuestos: &tc.prop,
+				})
+				if err == nil {
+					t.Fatalf("se esperaba error '%s', pero no hubo error", tc.espera)
+				}
+				if !strings.Contains(err.Error(), tc.espera) {
+					t.Errorf("error esperado contenía '%s', obtenido '%s'", tc.espera, err.Error())
+				}
+			})
+		}
+	})
+
+	t.Run("CasoConcreto_Evento1_CocheraOriginal_Pantalla_Microfono_5Cocheras", func(t *testing.T) {
+		store := storage.NewMemoryStore()
+		svc := services.NewSolicitudService(store, store)
+		eventoService := services.NewEventoService(store)
+
+		ev, err := eventoService.ObtenerEventoPorID(ctx, 1)
+		if err != nil {
+			t.Fatalf("error obteniendo evento 1: %v", err)
+		}
+
+		// Validar que Evento 1 conserva su semilla de cochera original de S/ 40
+		if len(ev.Adicionales) != 1 {
+			t.Fatalf("se esperaba 1 adicional original en evento 1, obtenidos %d", len(ev.Adicionales))
+		}
+		if ev.Adicionales[0].ID != "cochera" || ev.Adicionales[0].Subtotal != 40.0 {
+			t.Fatalf("cochera original inválida: %+v", ev.Adicionales[0])
+		}
+
+		prop := []models.AdicionalPropuestoDTO{
+			{ID: "pantalla_led_5x4", Cantidad: 1, Horas: 1}, // S/ 200
+			{ID: "microfono", Cantidad: 2, Horas: 1},        // S/ 10
+			{ID: "cochera", Cantidad: 5, Horas: 1},          // S/ 50
+		}
+
+		sol, err := svc.CrearSolicitud(ctx, models.SolicitudCreacionDTO{
+			EventoID:              ev.ID,
+			Motivo:                "Ampliación de equipamiento audiovisual y estacionamientos",
+			FechaPropuesta:        ev.Fecha,
+			HoraInicioPropuesta:   ev.HoraInicio,
+			HoraFinPropuesta:      ev.HoraFin,
+			AdicionalesPropuestos: &prop,
+		})
+		if err != nil {
+			t.Fatalf("error creando solicitud con caso concreto: %v", err)
+		}
+
+		// Snapshots originales: deben tener la cochera original de S/ 40
+		if len(sol.DatosOriginales.Adicionales) != 1 {
+			t.Fatalf("se esperaba 1 adicional en snapshot original, obtenidos %d", len(sol.DatosOriginales.Adicionales))
+		}
+		origCochera := sol.DatosOriginales.Adicionales[0]
+		if origCochera.ID != "cochera" || origCochera.Nombre != "Cochera" || origCochera.Unidad != "unidad" ||
+			origCochera.Cantidad != 1 || origCochera.Horas != 4 || origCochera.TarifaHora != 10.0 || origCochera.Subtotal != 40.0 {
+			t.Fatalf("snapshot original de cochera incorrecto: %+v", origCochera)
+		}
+
+		// Snapshots propuestos: deben tener 3 adicionales y sumar S/ 260
+		if len(sol.DatosPropuestos.Adicionales) != 3 {
+			t.Fatalf("se esperaban 3 adicionales en snapshot propuesto, obtenidos %d", len(sol.DatosPropuestos.Adicionales))
+		}
+
+		var totalPropuesto float64
+		for _, a := range sol.DatosPropuestos.Adicionales {
+			totalPropuesto += a.Subtotal
+			if a.Unidad != "unidad" {
+				t.Errorf("adicional propuesto '%s' no tiene unidad 'unidad': %s", a.ID, a.Unidad)
+			}
+			switch a.ID {
+			case "pantalla_led_5x4":
+				if a.Nombre != "Pantalla LED 5×4" || a.TarifaHora != 200.0 || a.Subtotal != 200.0 {
+					t.Errorf("pantalla led incorrecta: %+v", a)
+				}
+			case "microfono":
+				if !strings.Contains(a.Nombre, "Micrófono") || a.TarifaHora != 5.0 || a.Subtotal != 10.0 {
+					t.Errorf("microfono incorrecto: %+v", a)
+				}
+			case "cochera":
+				if a.Nombre != "Cochera" || a.TarifaHora != 10.0 || a.Subtotal != 50.0 {
+					t.Errorf("cochera propuesta incorrecta: %+v", a)
+				}
+			default:
+				t.Errorf("adicional inesperado: %s", a.ID)
+			}
+		}
+
+		if totalPropuesto != 260.0 {
+			t.Errorf("se esperaba total propuesto 260.0, obtenido %f", totalPropuesto)
+		}
+
+		// Diferencia: 260 - 40 = +220
+		diff := totalPropuesto - origCochera.Subtotal
+		if diff != 220.0 {
+			t.Errorf("se esperaba diferencia de +220.0, obtenida %f", diff)
+		}
+
+		// Verificar que el evento original en el store no fue mutado
+		evDespues, _ := eventoService.ObtenerEventoPorID(ctx, 1)
+		if len(evDespues.Adicionales) != 1 || evDespues.Adicionales[0].Subtotal != 40.0 {
+			t.Fatalf("el evento original en el repositorio fue mutado: %+v", evDespues.Adicionales)
 		}
 	})
 }

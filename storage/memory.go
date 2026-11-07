@@ -61,6 +61,17 @@ func NewMemoryStore() *Store {
 		EnsayoFecha:          "",
 		EnsayoHoraInicio:     "",
 		EnsayoHoraFin:        "",
+		Adicionales: []models.AdicionalItem{
+			{
+				ID:         "cochera",
+				Nombre:     "Cochera",
+				Unidad:     "unidad",
+				Cantidad:   1,
+				Horas:      4,
+				TarifaHora: 10.0,
+				Subtotal:   40.0,
+			},
+		},
 	}
 
 	s.eventos[2] = models.Evento{
@@ -87,6 +98,7 @@ func NewMemoryStore() *Store {
 		EnsayoFecha:          "",
 		EnsayoHoraInicio:     "",
 		EnsayoHoraFin:        "",
+		Adicionales:          []models.AdicionalItem{},
 	}
 
 	return s
