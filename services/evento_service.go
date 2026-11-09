@@ -31,6 +31,47 @@ func (s *EventoService) ObtenerEventos(ctx context.Context) ([]models.Evento, er
 	return eventos, nil
 }
 
+// puedeVerEvento indica si el usuario puede acceder al evento: el asesor ve todos; el cliente solo los suyos.
+// Un rol desconocido o un cliente sin cliente_id vinculado no ve ninguno.
+func puedeVerEvento(u models.Usuario, e models.Evento) bool {
+	switch u.Rol {
+	case models.RolAsesor:
+		return true
+	case models.RolCliente:
+		return u.ClienteID != "" && u.ClienteID == e.ClienteID
+	default:
+		return false
+	}
+}
+
+// ObtenerEventosDe retorna solo los eventos que el usuario puede ver, garantizando un slice no nulo.
+func (s *EventoService) ObtenerEventosDe(ctx context.Context, u models.Usuario) ([]models.Evento, error) {
+	todos, err := s.ObtenerEventos(ctx)
+	if err != nil {
+		return nil, err
+	}
+	visibles := make([]models.Evento, 0, len(todos))
+	for _, e := range todos {
+		if puedeVerEvento(u, e) {
+			visibles = append(visibles, e)
+		}
+	}
+	return visibles, nil
+}
+
+// ObtenerEventoDe retorna el evento si el usuario puede verlo. Si pertenece a otro cliente responde
+// ErrEventoNoEncontrado (igual que si no existiera) para no revelar su existencia.
+func (s *EventoService) ObtenerEventoDe(ctx context.Context, id uint, u models.Usuario) (models.Evento, error) {
+	evento, err := s.ObtenerEventoPorID(ctx, id)
+	if err != nil {
+		return models.Evento{}, err
+	}
+	if !puedeVerEvento(u, evento) {
+		return models.Evento{}, ErrEventoNoEncontrado
+	}
+	return evento, nil
+}
+
 // ObtenerEventoPorID valida el identificador y consulta el detalle de un evento específico.
 func (s *EventoService) ObtenerEventoPorID(ctx context.Context, id uint) (models.Evento, error) {
 	if id == 0 {

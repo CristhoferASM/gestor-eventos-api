@@ -34,6 +34,7 @@ type SolicitudService struct {
 	eventoRepo    repositories.EventoRepository
 	solicitudRepo repositories.SolicitudRepository
 	clock         ClockFunc
+	bloqueoRepo   repositories.BloqueoRepository
 }
 
 // NewSolicitudService crea un SolicitudService utilizando time.Now como reloj por defecto.
@@ -581,6 +582,14 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 		},
 	}
 
+	// 10b. Disponibilidad: si la propuesta cambia fecha, horario o tiempos técnicos, no puede chocar con otras
+	// reservas ni con bloqueos institucionales (tocarse en el borde está permitido).
+	if hayCambioHorario || hayCambioTiemposTecnicos {
+		if err := s.comprobarDisponibilidad(ctx, evento.ID, nuevaSolicitud.DatosPropuestos); err != nil {
+			return models.Solicitud{}, err
+		}
+	}
+
 	// 11. Coordinar el registro atómico mediante el repositorio
 	creada, err := s.solicitudRepo.CrearSolicitud(ctx, nuevaSolicitud)
 	if err != nil {
@@ -588,6 +597,12 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 	}
 
 	return creada, nil
+}
+
+// ConBloqueos habilita la comprobación de bloqueos institucionales al registrar solicitudes.
+func (s *SolicitudService) ConBloqueos(r repositories.BloqueoRepository) *SolicitudService {
+	s.bloqueoRepo = r
+	return s
 }
 
 // ObtenerSolicitudes retorna la lista de solicitudes registradas garantizando un slice no nulo.
@@ -600,4 +615,81 @@ func (s *SolicitudService) ObtenerSolicitudes(ctx context.Context) ([]models.Sol
 		return make([]models.Solicitud, 0), nil
 	}
 	return solicitudes, nil
+}
+
+// CrearSolicitudDe registra una solicitud solo si el usuario puede ver el evento indicado.
+// Un evento ajeno se trata como inexistente (ErrEventoNoEncontrado).
+func (s *SolicitudService) CrearSolicitudDe(ctx context.Context, u models.Usuario, dto models.SolicitudCreacionDTO) (models.Solicitud, error) {
+	if dto.EventoID != 0 {
+		evento, err := s.eventoRepo.ObtenerEventoPorID(ctx, dto.EventoID)
+		if err != nil {
+			return models.Solicitud{}, err
+		}
+		if !puedeVerEvento(u, evento) {
+			return models.Solicitud{}, ErrEventoNoEncontrado
+		}
+	}
+	return s.CrearSolicitud(ctx, dto)
+}
+
+// ObtenerSolicitudesDe retorna solo las solicitudes de eventos que el usuario puede ver.
+func (s *SolicitudService) ObtenerSolicitudesDe(ctx context.Context, u models.Usuario) ([]models.Solicitud, error) {
+	solicitudes, err := s.ObtenerSolicitudes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eventos, err := s.eventoRepo.ObtenerEventos(ctx)
+	if err != nil {
+		return nil, err
+	}
+	visibles := make(map[uint]bool, len(eventos))
+	for _, e := range eventos {
+		if puedeVerEvento(u, e) {
+			visibles[e.ID] = true
+		}
+	}
+	resultado := make([]models.Solicitud, 0, len(solicitudes))
+	for _, sol := range solicitudes {
+		if visibles[sol.EventoID] {
+			resultado = append(resultado, sol)
+		}
+	}
+	return resultado, nil
+}
+
+// RetirarSolicitud permite al cliente dueño retirar una solicitud que sigue pendiente.
+// Solo el rol cliente puede retirar (el asesor tiene su propio flujo, aún por definir). Una solicitud ajena
+// se trata como inexistente. No modifica la reserva ni genera cargos; la solicitud se conserva con su historial.
+func (s *SolicitudService) RetirarSolicitud(ctx context.Context, u models.Usuario, id uint) (models.Solicitud, error) {
+	if id == 0 {
+		return models.Solicitud{}, nuevoErrorValidacion("El identificador de la solicitud debe ser un número entero positivo.")
+	}
+	if u.Rol != models.RolCliente {
+		return models.Solicitud{}, ErrAccesoDenegado
+	}
+
+	solicitudes, err := s.solicitudRepo.ObtenerSolicitudes(ctx)
+	if err != nil {
+		return models.Solicitud{}, err
+	}
+	var encontrada *models.Solicitud
+	for i := range solicitudes {
+		if solicitudes[i].ID == id {
+			encontrada = &solicitudes[i]
+			break
+		}
+	}
+	if encontrada == nil {
+		return models.Solicitud{}, ErrSolicitudNoEncontrada
+	}
+
+	evento, err := s.eventoRepo.ObtenerEventoPorID(ctx, encontrada.EventoID)
+	if err != nil {
+		return models.Solicitud{}, err
+	}
+	if !puedeVerEvento(u, evento) {
+		return models.Solicitud{}, ErrSolicitudNoEncontrada
+	}
+
+	return s.solicitudRepo.RetirarSolicitud(ctx, id, s.clock().Format(time.RFC3339))
 }

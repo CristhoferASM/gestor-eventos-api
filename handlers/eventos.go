@@ -13,7 +13,7 @@ import (
 // ListarEventosHandler retorna todos los eventos disponibles
 func ListarEventosHandler(eventoService *services.EventoService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		eventos, err := eventoService.ObtenerEventos(c.Request.Context())
+		eventos, err := eventoService.ObtenerEventosDe(c.Request.Context(), usuarioActual(c))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Error interno del servidor.",
@@ -36,7 +36,7 @@ func DetalleEventoHandler(eventoService *services.EventoService) gin.HandlerFunc
 			return
 		}
 
-		evento, err := eventoService.ObtenerEventoPorID(c.Request.Context(), uint(idUint))
+		evento, err := eventoService.ObtenerEventoDe(c.Request.Context(), uint(idUint), usuarioActual(c))
 		if err != nil {
 			switch {
 			case errors.Is(err, services.ErrDatosInvalidos):

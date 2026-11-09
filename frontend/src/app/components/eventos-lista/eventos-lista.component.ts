@@ -3,6 +3,7 @@ import {
   ESTADO_PENDIENTE_REVISION,
   Evento,
   Solicitud,
+  formatearCodigoSolicitud,
 } from '../../models/gestor-eventos.models';
 
 @Component({
@@ -43,6 +44,39 @@ import {
             Reintentar
           </button>
         </div>
+      } @else if (eventos.length === 0 && sinClienteVinculado) {
+        <div class="tarjeta-estado-vacio" role="status">
+          <div class="icono-estado-vacio" aria-hidden="true">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </div>
+          <h3 style="margin-bottom: 8px; color: var(--primario);">No tienes eventos vinculados a esta cuenta</h3>
+          <p style="color: var(--gris); font-size: 13.5px; max-width: 520px; margin: 0 auto 16px; line-height: 1.5;">
+            @if (cuentaGoogle) {
+              Has iniciado sesión con tu cuenta de Google (<strong>{{ correoCuenta || 'tu cuenta de Google' }}</strong>).
+            } @else {
+              Has iniciado sesión con <strong>{{ correoCuenta || 'tu cuenta' }}</strong>.
+            }
+            Esta cuenta aún no tiene contratos ni eventos registrados en el sistema de Showtech Solutions.
+          </p>
+          <div class="aviso-vinculo-pendiente">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>Para asociar tu cuenta con una reserva existente, contacta a tu asesor comercial.</span>
+          </div>
+          <div style="margin-top: 16px;">
+            <button type="button" class="btn btn-sec btn-chico" (click)="verificarVinculo.emit()" [disabled]="cargando">
+              Ya me vincularon: actualizar
+            </button>
+          </div>
+        </div>
       } @else if (eventos.length === 0) {
         <div class="aviso aviso-info" role="status">
           No hay eventos registrados en este momento.
@@ -68,7 +102,7 @@ import {
                   }
                   @if (solPendiente) {
                     <span class="badge-solicitud-pendiente">
-                      Pendiente de revisión (Solicitud #{{ solPendiente.id }})
+                      Pendiente de revisión (Solicitud {{ formatearCodigoSolicitud(solPendiente) }})
                     </span>
                   }
                 </div>
@@ -221,6 +255,39 @@ import {
         margin-left: auto;
       }
 
+      .tarjeta-estado-vacio {
+        background: var(--blanco);
+        border: 1.5px dashed var(--borde);
+        border-radius: 12px;
+        padding: 44px 20px;
+        text-align: center;
+        margin-bottom: 24px;
+      }
+
+      .icono-estado-vacio {
+        width: 60px;
+        height: 60px;
+        margin: 0 auto 16px;
+        background: #eff6ff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primario-2);
+      }
+
+      .aviso-vinculo-pendiente {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1e40af;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-size: 12.5px;
+      }
+
       .estado-carga {
         display: flex;
         align-items: center;
@@ -270,10 +337,20 @@ export class EventosListaComponent {
   @Input() eventoSeleccionadoId: number | null = null;
   @Input() cargando = false;
   @Input() errorCarga = '';
+  /** true si el usuario es un cliente sin cliente_id vinculado (ej. entró con Google). */
+  @Input() sinClienteVinculado = false;
+  /** Correo de la cuenta, para el aviso del estado vacío. */
+  @Input() correoCuenta = '';
+  /** true si la cuenta se creó con Google. */
+  @Input() cuentaGoogle = false;
 
   @Output() seleccionarEvento = new EventEmitter<Evento>();
   @Output() verSolicitud = new EventEmitter<Solicitud>();
   @Output() reintentar = new EventEmitter<void>();
+  /** El cliente sin vínculo pide revisar si el asesor ya lo asoció a un cliente. */
+  @Output() verificarVinculo = new EventEmitter<void>();
+
+  readonly formatearCodigoSolicitud = formatearCodigoSolicitud;
 
   obtenerSolicitudPendiente(eventoId: number): Solicitud | undefined {
     return this.solicitudes.find(

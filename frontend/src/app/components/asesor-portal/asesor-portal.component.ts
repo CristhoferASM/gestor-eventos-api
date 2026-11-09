@@ -1,8 +1,6 @@
 import {
   Component,
-  EventEmitter,
   OnInit,
-  Output,
   computed,
   inject,
   signal,
@@ -11,6 +9,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   AdicionalCatalogo,
+  ESTADO_RETIRADA_CLIENTE,
   AdicionalItem,
   BorradorAsesor,
   Evento,
@@ -22,6 +21,7 @@ import {
   construirFilasComparativa,
   crearBorradorAsesorDesdeEvento,
   formatSoles,
+  formatearCodigoSolicitud,
   formatearFechaHoraEnvio,
   formatearFechaVisual,
   formatearTextoObligatorio,
@@ -29,23 +29,33 @@ import {
   obtenerResumenCambiosSolicitud,
   sonAdicionalesIguales,
 } from '../../models/gestor-eventos.models';
+import { AuthService } from '../../services/auth.service';
 import { EventosApiService } from '../../services/eventos-api.service';
 import {
   ResultadoValidacionHorarios,
   validarCoherenciaHorarios,
 } from '../../validators/solicitud.validators';
+import { SelectorFechaHoraDirective } from '../../directives/selector-fecha-hora.directive';
+import { VinculoCuentasComponent } from '../vinculo-cuentas/vinculo-cuentas.component';
 
 @Component({
   selector: 'app-asesor-portal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [SelectorFechaHoraDirective, VinculoCuentasComponent, CommonModule, FormsModule],
   templateUrl: './asesor-portal.component.html',
   styleUrl: './asesor-portal.component.scss',
 })
 export class AsesorPortalComponent implements OnInit {
   private readonly api = inject(EventosApiService);
 
-  @Output() volverACliente = new EventEmitter<void>();
+  readonly auth = inject(AuthService);
+  readonly mostrarVinculo = signal(false);
+  readonly estadoRetirada = ESTADO_RETIRADA_CLIENTE;
+  readonly formatearCodigoSolicitud = formatearCodigoSolicitud;
+
+  cerrarSesion(): void {
+    this.auth.cerrarSesion();
+  }
 
   // Navegación de pasos (1: Seleccionar, 2: Modificar, 3: Validar, 4: Revisar)
   readonly pasoActual = signal<number>(1);

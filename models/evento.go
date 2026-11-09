@@ -3,6 +3,7 @@ package models
 // Evento representa un evento gestionado en SHOWTECH SOLUTIONS.
 type Evento struct {
 	ID            uint   `json:"id"`
+	ClienteID     string `json:"cliente_id"` // Dueño del evento (ej. "CLI-001"); define qué cliente puede verlo
 	Nombre        string `json:"nombre"`
 	Espacio       string `json:"espacio"`
 	Fecha         string `json:"fecha"`       // Formato YYYY-MM-DD

@@ -4,10 +4,13 @@ import { Observable } from 'rxjs';
 import {
   AdicionalCatalogo,
   ApiErrorRespuesta,
+  ClienteConEventos,
   CrearSolicitudRespuesta,
   Evento,
+  RetirarSolicitudRespuesta,
   Solicitud,
   SolicitudCreacionPayload,
+  Usuario,
 } from '../models/gestor-eventos.models';
 
 @Injectable({
@@ -35,6 +38,29 @@ export class EventosApiService {
 
   crearSolicitud(payload: SolicitudCreacionPayload): Observable<CrearSolicitudRespuesta> {
     return this.http.post<CrearSolicitudRespuesta>(`${this.baseUrl}/solicitudes`, payload);
+  }
+
+  /** Solo asesor: clientes a los que se puede vincular una cuenta. */
+  obtenerClientes(): Observable<ClienteConEventos[]> {
+    return this.http.get<ClienteConEventos[]>(`${this.baseUrl}/clientes`);
+  }
+
+  /** Solo asesor: cuentas de Google que aún no tienen un cliente vinculado. */
+  obtenerCuentasPendientes(): Observable<Usuario[]> {
+    return this.http.get<Usuario[]>(`${this.baseUrl}/usuarios/pendientes-de-vinculo`);
+  }
+
+  /** Solo asesor: asocia una cuenta de Google con un cliente. */
+  vincularCuenta(correo: string, clienteId: string): Observable<{ mensaje: string; usuario: Usuario }> {
+    return this.http.post<{ mensaje: string; usuario: Usuario }>(`${this.baseUrl}/usuarios/vincular`, {
+      correo,
+      cliente_id: clienteId,
+    });
+  }
+
+  /** El cliente retira una solicitud que sigue pendiente (la solicitud se conserva con estado «Retirada por el cliente»). */
+  retirarSolicitud(id: number): Observable<RetirarSolicitudRespuesta> {
+    return this.http.post<RetirarSolicitudRespuesta>(`${this.baseUrl}/solicitudes/${id}/retirar`, {});
   }
 
   /**
