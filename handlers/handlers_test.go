@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gestor-eventos-api/handlers"
 	"gestor-eventos-api/models"
@@ -24,12 +25,40 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-func setupTestRouter() (*gin.Engine, *storage.Store) {
+// routerConSesion agrega automáticamente un token de asesor a las peticiones que no traen Authorization,
+// para que las pruebas de negocio no repitan el login en cada llamada.
+type routerConSesion struct {
+	*gin.Engine
+	token string
+}
+
+func (r routerConSesion) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Header.Get("Authorization") == "" {
+		req.Header.Set("Authorization", "Bearer "+r.token)
+	}
+	r.Engine.ServeHTTP(w, req)
+}
+
+// sesionPara registra al usuario y una sesión vigente en el almacén y devuelve su token.
+func sesionPara(store *storage.Store, u models.Usuario) string {
+	store.AgregarUsuario(u)
+	token := "token-" + u.Correo
+	_ = store.GuardarSesion(context.Background(), models.Sesion{
+		Token: token, Correo: u.Correo, ExpiraEn: time.Now().Add(time.Hour),
+	})
+	return token
+}
+
+var usuarioAsesorPrueba = models.Usuario{ID: 100, Correo: "asesor@prueba.test", Nombre: "Asesor", Rol: models.RolAsesor}
+
+func setupTestRouter() (routerConSesion, *storage.Store) {
 	store := storage.NewMemoryStore()
+	token := sesionPara(store, usuarioAsesorPrueba)
 	eventoService := services.NewEventoService(store)
 	solicitudService := services.NewSolicitudService(store, store)
-	r := handlers.SetupRouter(eventoService, solicitudService)
-	return r, store
+	authService := services.NewAuthService(store, store)
+	r := handlers.SetupRouter(eventoService, solicitudService, authService)
+	return routerConSesion{Engine: r, token: token}, store
 }
 
 type repoFalloHTTP struct {
@@ -38,6 +67,10 @@ type repoFalloHTTP struct {
 	errSolicitudes    error
 	errCrearSolicitud error
 	base              *storage.Store
+}
+
+func (r *repoFalloHTTP) RetirarSolicitud(ctx context.Context, id uint, fecha string) (models.Solicitud, error) {
+	return r.base.RetirarSolicitud(ctx, id, fecha)
 }
 
 func (r *repoFalloHTTP) ObtenerEventos(ctx context.Context) ([]models.Evento, error) {
@@ -477,10 +510,12 @@ func TestConservacionEventoOriginal(t *testing.T) {
 // 9. Prueba de arrays vacíos en GET /solicitudes y GET /eventos
 func TestListasVaciasDevuelvenArrayJSON(t *testing.T) {
 	emptyStore := storage.NewEmptyMemoryStore()
-	r := handlers.SetupRouter(
+	token := sesionPara(emptyStore, usuarioAsesorPrueba)
+	r := routerConSesion{Engine: handlers.SetupRouter(
 		services.NewEventoService(emptyStore),
 		services.NewSolicitudService(emptyStore, emptyStore),
-	)
+		services.NewAuthService(emptyStore, emptyStore),
+	), token: token}
 
 	for _, endpoint := range []string{"/eventos", "/solicitudes"} {
 		req, _ := http.NewRequest(http.MethodGet, endpoint, nil)
@@ -509,10 +544,13 @@ func TestFalloSimuladoRepositorioRespuesta500(t *testing.T) {
 		base:              storage.NewMemoryStore(),
 	}
 
-	r := handlers.SetupRouter(
+	storeAuth := storage.NewMemoryStore()
+	token := sesionPara(storeAuth, usuarioAsesorPrueba)
+	r := routerConSesion{Engine: handlers.SetupRouter(
 		services.NewEventoService(repoFallo),
 		services.NewSolicitudService(storage.NewMemoryStore(), repoFallo),
-	)
+		services.NewAuthService(storeAuth, storeAuth),
+	), token: token}
 
 	// GET /eventos -> 500
 	reqEv, _ := http.NewRequest(http.MethodGet, "/eventos", nil)

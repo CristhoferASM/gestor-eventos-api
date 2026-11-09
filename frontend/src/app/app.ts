@@ -5,14 +5,17 @@ import {
   OnInit,
   ViewChild,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   AdicionalCatalogo,
   AdicionalItem,
   ESTADO_PENDIENTE_REVISION,
+  ESTADO_RETIRADA_CLIENTE,
   Evento,
   FilaComparativa,
   ResumenComparativoAdicionales,
@@ -22,13 +25,15 @@ import {
   TEXTO_SIN_ESPECIFICAR,
   calcularComparativoAdicionales,
   construirFilasComparativa,
+  formatearCodigoSolicitud,
   formatearFechaHoraEnvio,
   formatearFechaVisual,
   formatearTextoObligatorio,
   formatearTextoOpcional,
 } from './models/gestor-eventos.models';
-import { Router, NavigationEnd } from '@angular/router';
 import { EventosApiService } from './services/eventos-api.service';
+import { AuthService } from './services/auth.service';
+import { LoginComponent } from './components/login/login.component';
 import { EventosListaComponent } from './components/eventos-lista/eventos-lista.component';
 import { SolicitudFormularioComponent } from './components/solicitud-formulario/solicitud-formulario.component';
 import { SolicitudesListaComponent } from './components/solicitudes-lista/solicitudes-lista.component';
@@ -40,6 +45,7 @@ export type PasoPortal = 1 | 2 | 3 | 4;
   selector: 'app-root',
   standalone: true,
   imports: [
+    LoginComponent,
     EventosListaComponent,
     SolicitudFormularioComponent,
     SolicitudesListaComponent,
@@ -50,9 +56,43 @@ export type PasoPortal = 1 | 2 | 3 | 4;
 })
 export class App implements OnInit {
   private readonly api = inject(EventosApiService);
-  private readonly router = inject(Router, { optional: true });
+  readonly auth = inject(AuthService);
+  readonly formatearCodigoSolicitud = formatearCodigoSolicitud;
 
-  readonly vistaActiva = signal<'cliente' | 'asesor'>('cliente');
+  /** Tarifas referenciales del prototipo (cliente.js: TARIFAS_REFERENCIALES). Sujetas a confirmación comercial. */
+  readonly tarifasReferenciales = { cargoModificacion: 100, horaAuditorio: 500 } as const;
+
+  /** La vista depende del rol de la sesión: el asesor ve su portal y el cliente, el suyo. */
+  readonly vistaActiva = computed<'cliente' | 'asesor'>(() =>
+    this.auth.usuario()?.rol === 'asesor' ? 'asesor' : 'cliente',
+  );
+
+  /** Cliente sin cliente_id (ej. cuenta de Google): el portal muestra el estado vacío seguro. */
+  readonly sinClienteVinculado = computed(() => {
+    const u = this.auth.usuario();
+    return u?.rol === 'cliente' && !u.cliente_id;
+  });
+
+  /** true mientras la página se recarga al cerrar sesión: evita el parpadeo del login antes de la recarga. */
+  readonly reiniciando = signal(false);
+
+  private estabaAutenticado = this.auth.autenticado();
+
+  constructor() {
+    // Reacciona a un login hecho en esta misma carga de página y al cierre de sesión
+    effect(() => {
+      const autenticado = this.auth.autenticado();
+      untracked(() => {
+        if (autenticado && !this.estabaAutenticado) {
+          this.estabaAutenticado = true;
+          this.cargarDatosDelPortal();
+        } else if (!autenticado && this.estabaAutenticado) {
+          this.estabaAutenticado = false;
+          this.reiniciarPortal();
+        }
+      });
+    });
+  }
 
   readonly textoSinEspecificar = TEXTO_SIN_ESPECIFICAR;
   readonly textoNoDisponible = TEXTO_NO_DISPONIBLE;
@@ -133,6 +173,9 @@ export class App implements OnInit {
   @ViewChild('modalDetalleRef')
   modalDetalleRef?: ElementRef<HTMLElement>;
 
+  @ViewChild('modalRetiroRef')
+  modalRetiroRef?: ElementRef<HTMLElement>;
+
   @ViewChild('modalDescartarRef')
   modalDescartarRef?: ElementRef<HTMLElement>;
 
@@ -143,6 +186,14 @@ export class App implements OnInit {
   readonly cargandoCatalogoAdicionales = signal<boolean>(false);
   readonly errorCatalogoAdicionales = signal<string>('');
   readonly solicitudes = signal<Solicitud[]>([]);
+
+  // Retiro de solicitud (solo el cliente dueño, solo si sigue pendiente)
+  readonly estadoRetirada = ESTADO_RETIRADA_CLIENTE;
+  readonly modalRetiroAbierto = signal(false);
+  readonly retirando = signal(false);
+  readonly errorRetiro = signal('');
+  readonly toast = signal<{ mensaje: string; tipo: 'ok' | 'error' } | null>(null);
+  private temporizadorToast: ReturnType<typeof setTimeout> | null = null;
   readonly eventoSeleccionado = signal<Evento | null>(null);
 
   readonly borradorPropuesta = signal<SolicitudCreacionPayload | null>(null);
@@ -296,22 +347,35 @@ export class App implements OnInit {
   });
 
   ngOnInit(): void {
-    if (typeof window !== 'undefined' && window.location?.pathname?.includes('asesor')) {
-      this.vistaActiva.set('asesor');
+    if (this.auth.autenticado()) {
+      this.cargarDatosDelPortal();
     }
-    this.router?.events.subscribe((event) => {
-      if (event instanceof NavigationEnd) {
-        this.vistaActiva.set(event.urlAfterRedirects.includes('asesor') ? 'asesor' : 'cliente');
-      }
-    });
-
-    this.cargarDatosIniciales();
   }
 
-  cambiarVista(vista: 'cliente' | 'asesor'): void {
-    this.vistaActiva.set(vista);
-    if (this.router && this.router.config && this.router.config.length > 0) {
-      this.router.navigate([`/${vista}`]).catch(() => {});
+  /** El portal del asesor carga sus propios datos; el del cliente los carga aquí. */
+  private cargarDatosDelPortal(): void {
+    if (this.vistaActiva() === 'cliente') {
+      this.cargarDatosIniciales();
+    }
+  }
+
+  cerrarSesion(): void {
+    this.auth.cerrarSesion();
+  }
+
+  /** Una cuenta sin cliente vinculado vuelve a consultar sus datos por si el asesor ya la asoció. */
+  verificarVinculo(): void {
+    this.auth.refrescarUsuario().subscribe(() => this.cargarDatosIniciales());
+  }
+
+  /**
+   * Al terminar la sesión se recarga la página para descartar por completo los datos y borradores
+   * del usuario anterior (eventos, solicitudes, formulario) antes de mostrar el login.
+   */
+  private reiniciarPortal(): void {
+    if (typeof window !== 'undefined') {
+      this.reiniciando.set(true);
+      window.location.reload();
     }
   }
 
@@ -540,6 +604,74 @@ export class App implements OnInit {
     this.enfocarElementoTrasRender('#btn-cerrar-modal-detalle');
   }
 
+  /** El botón «Retirar solicitud» solo aparece para el cliente y mientras la solicitud sigue pendiente. */
+  puedeRetirar(sol: Solicitud | null): boolean {
+    return (
+      sol !== null &&
+      this.auth.usuario()?.rol === 'cliente' &&
+      sol.estado === ESTADO_PENDIENTE_REVISION
+    );
+  }
+
+  abrirModalRetiro(): void {
+    this.errorRetiro.set('');
+    this.modalRetiroAbierto.set(true);
+    this.enfocarElementoTrasRender('#btn-cancelar-retiro');
+  }
+
+  cerrarModalRetiro(): void {
+    if (this.retirando()) {
+      return;
+    }
+    this.modalRetiroAbierto.set(false);
+    this.errorRetiro.set('');
+    this.enfocarElementoTrasRender('#btn-retirar-solicitud');
+  }
+
+  confirmarRetiro(): void {
+    const sol = this.solicitudDetalleModal();
+    if (!sol || this.retirando() || !this.puedeRetirar(sol)) {
+      return;
+    }
+    this.retirando.set(true);
+    this.errorRetiro.set('');
+
+    this.api.retirarSolicitud(sol.id).subscribe({
+      next: (respuesta) => {
+        const retirada = respuesta.solicitud;
+        this.solicitudes.update((lista) => lista.map((s) => (s.id === retirada.id ? retirada : s)));
+        this.solicitudDetalleModal.set(retirada);
+        this.retirando.set(false);
+        this.modalRetiroAbierto.set(false);
+        this.mostrarToast('Solicitud retirada. Tu reserva se mantiene sin cambios', 'ok');
+      },
+      error: (err: unknown) => {
+        this.retirando.set(false);
+        this.errorRetiro.set(this.mensajeErrorRetiro(err));
+        // El estado pudo cambiar en el servidor: se refresca la lista para no mostrar datos viejos
+        this.cargarSolicitudes();
+      },
+    });
+  }
+
+  private mensajeErrorRetiro(err: unknown): string {
+    if (err instanceof HttpErrorResponse && [403, 404, 409].includes(err.status)) {
+      const cuerpo = err.error as { error?: unknown } | null;
+      if (cuerpo && typeof cuerpo.error === 'string' && cuerpo.error.trim()) {
+        return cuerpo.error.trim();
+      }
+    }
+    return this.api.obtenerMensajeError(err, 'envio');
+  }
+
+  private mostrarToast(mensaje: string, tipo: 'ok' | 'error'): void {
+    if (this.temporizadorToast) {
+      clearTimeout(this.temporizadorToast);
+    }
+    this.toast.set({ mensaje, tipo });
+    this.temporizadorToast = setTimeout(() => this.toast.set(null), 4000);
+  }
+
   cerrarModalDetalle(): void {
     this.solicitudDetalleModal.set(null);
     this.restaurarFocoAnterior();
@@ -619,6 +751,11 @@ export class App implements OnInit {
   @HostListener('document:keydown', ['$event'])
   alPresionarTecla(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
+      if (this.modalRetiroAbierto()) {
+        event.preventDefault();
+        this.cerrarModalRetiro();
+        return;
+      }
       if (this.solicitudDetalleModal()) {
         event.preventDefault();
         this.cerrarModalDetalle();
@@ -632,7 +769,9 @@ export class App implements OnInit {
     }
 
     if (event.key === 'Tab') {
-      if (this.solicitudDetalleModal() && this.modalDetalleRef?.nativeElement) {
+      if (this.modalRetiroAbierto() && this.modalRetiroRef?.nativeElement) {
+        this.atraparFocoEnContenedor(event, this.modalRetiroRef.nativeElement);
+      } else if (this.solicitudDetalleModal() && this.modalDetalleRef?.nativeElement) {
         this.atraparFocoEnContenedor(event, this.modalDetalleRef.nativeElement);
       } else if (this.modalDescartarAbierto() && this.modalDescartarRef?.nativeElement) {
         this.atraparFocoEnContenedor(event, this.modalDescartarRef.nativeElement);

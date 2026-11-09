@@ -1,5 +1,6 @@
 export interface Evento {
   id: number;
+  cliente_id?: string; // Dueño del evento (ej. "CLI-001")
   nombre: string;
   espacio: string;
   fecha: string;       // Formato YYYY-MM-DD
@@ -127,6 +128,7 @@ export interface Solicitud {
   tiempos_tecnicos_propuestos?: TiemposTecnicosPropuestos;
   adicionales_propuestos?: AdicionalPropuestoDTO[];
   estado: string;
+  fecha_retiro?: string; // RFC 3339; solo si el cliente retiró la solicitud
   fecha_creacion: string;
   datos_originales: DatosHorario;
   datos_propuestos: DatosHorario;
@@ -142,6 +144,7 @@ export interface ApiErrorRespuesta {
 }
 
 export const ESTADO_PENDIENTE_REVISION = 'Pendiente de revisión';
+export const ESTADO_RETIRADA_CLIENTE = 'Retirada por el cliente';
 export const TEXTO_SIN_ESPECIFICAR = 'Sin especificar';
 export const TEXTO_NO_DISPONIBLE = 'Dato no disponible en este registro';
 
@@ -947,4 +950,60 @@ export function crearBorradorAsesorDesdeEvento(evento: Evento): BorradorAsesor {
       ? JSON.parse(JSON.stringify(evento.adicionales))
       : [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Autenticación (refleja models/usuario.go del backend)
+// ---------------------------------------------------------------------------
+
+export type RolUsuario = 'asesor' | 'cliente';
+
+export interface Usuario {
+  id: number;
+  correo: string;
+  nombre: string;
+  rol: RolUsuario;
+  cliente_id?: string;
+  proveedor?: string; // "google" si la cuenta se creó con Google
+}
+
+/** Respuesta de POST /auth/login y /auth/reenviar-codigo. codigo_prueba existe solo mientras el envío sea simulado. */
+export interface RespuestaDesafio {
+  desafio_id: string;
+  correo_enmascarado: string;
+  expira_en_segundos: number;
+  reenvio_en_segundos: number;
+  codigo_prueba: string;
+  /** El asesor solo verifica el código una vez al día en cada navegador. */
+  recordatorio_diario?: boolean;
+  /** Presente (y sin desafío) cuando el código ya se verificó hoy: la contraseña abrió la sesión directamente. */
+  sesion?: RespuestaSesion;
+}
+
+/** Respuesta de POST /auth/verificar y /auth/google. */
+export interface RespuestaSesion {
+  token: string;
+  expira_en: string; // ISO 8601
+  usuario: Usuario;
+}
+
+/**
+ * Código legible de una solicitud, como en el prototipo (ej. «SOL-2026-001»).
+ * El año sale de fecha_creacion; si no se puede leer, se usa el año actual.
+ */
+export function formatearCodigoSolicitud(sol: { id: number; fecha_creacion?: string | null }): string {
+  const anio = /^(\d{4})-/.exec(String(sol.fecha_creacion ?? '').trim())?.[1] ?? String(new Date().getFullYear());
+  return `SOL-${anio}-${String(sol.id).padStart(3, '0')}`;
+}
+
+/** Respuesta de POST /solicitudes/:id/retirar. */
+export interface RetirarSolicitudRespuesta {
+  mensaje: string;
+  solicitud: Solicitud;
+}
+
+/** Cliente al que se puede vincular una cuenta (GET /clientes, solo asesor). */
+export interface ClienteConEventos {
+  cliente_id: string;
+  eventos: string[];
 }

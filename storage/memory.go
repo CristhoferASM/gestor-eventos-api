@@ -12,6 +12,7 @@ import (
 var (
 	_ repositories.EventoRepository    = (*Store)(nil)
 	_ repositories.SolicitudRepository = (*Store)(nil)
+	_ repositories.BloqueoRepository   = (*Store)(nil)
 )
 
 // Store gestiona el almacenamiento en memoria protegido contra accesos concurrentes mediante RWMutex
@@ -20,6 +21,14 @@ type Store struct {
 	eventos     map[uint]models.Evento
 	solicitudes []models.Solicitud
 	nextSolID   uint
+
+	bloqueos []models.BloqueoInstitucional
+	verifDiaria map[string]string // clave: dispositivo|correo -> día de Lima
+
+	// Autenticación (se inicializan de forma perezosa en auth_memory.go)
+	usuarios map[string]models.Usuario // clave: correo en minúsculas
+	desafios map[string]models.DesafioVerificacion
+	sesiones map[string]models.Sesion
 }
 
 // NewEmptyMemoryStore inicializa un almacenamiento en memoria sin eventos ni solicitudes cargadas.
@@ -36,11 +45,19 @@ func NewEmptyMemoryStore() *Store {
 func NewMemoryStore() *Store {
 	s := NewEmptyMemoryStore()
 
+	// Bloqueo institucional del prototipo (BLK-001)
+	s.bloqueos = []models.BloqueoInstitucional{{
+		ID: "BLK-001", Titulo: "Mantenimiento preventivo e iluminación institucional", Espacio: "Auditorio Showtech",
+		Fecha: "2026-11-06", HoraInicio: "14:00", HoraFin: "17:00", Tipo: "Bloqueo institucional",
+		Notas: "Calibración de consolas de audio digital, reflectores y cambio de lámparas.",
+	}}
+
 	// Dos eventos iniciales de demostración (datos de contacto, observaciones y tiempos técnicos para desarrollo)
 	s.eventos[1] = models.Evento{
 		ID:                   1,
-		Nombre:               "Lanzamiento Corporativo Showtech 2026",
-		Espacio:              "Auditorio Principal A",
+		ClienteID:            "CLI-001",
+		Nombre:               "Ceremonia de graduación",
+		Espacio:              "Auditorio Showtech",
 		Fecha:                "2026-11-15",
 		HoraInicio:           "09:00",
 		HoraFin:              "13:00",
@@ -48,7 +65,7 @@ func NewMemoryStore() *Store {
 		Contacto:             "María Rodríguez",
 		Telefono:             "998 765 432",
 		Correo:               "m.rodriguez@demo-showtech.test",
-		Observaciones:        "Disposición de silletería para 200 personas, atril central y 2 micrófonos inalámbricos.",
+		Observaciones:        "Disposición de silletería para 350 personas, atril central y 2 micrófonos inalámbricos.",
 		HasMontaje:           true,
 		MontajeFecha:         "2026-11-15",
 		MontajeHoraInicio:    "08:00",
@@ -76,16 +93,17 @@ func NewMemoryStore() *Store {
 
 	s.eventos[2] = models.Evento{
 		ID:                   2,
-		Nombre:               "Taller de Producción Escénica y Luces",
-		Espacio:              "Sala de Capacitación B",
+		ClienteID:            "CLI-002",
+		Nombre:               "Encuentro de docentes",
+		Espacio:              "Auditorio Showtech",
 		Fecha:                "2026-11-20",
 		HoraInicio:           "14:00",
 		HoraFin:              "18:00",
 		Estado:               "Confirmado",
-		Contacto:             "Carlos Duarte",
+		Contacto:             "Prof. Carlos Duarte",
 		Telefono:             "997 654 321",
 		Correo:               "c.duarte@demo-showtech.test",
-		Observaciones:        "Proyección multimedia activa, consola de iluminación DMX y mesa con 4 micrófonos.",
+		Observaciones:        "Proyección multimedia activa, sonido ambiental y mesa principal con 6 micrófonos.",
 		HasMontaje:           false,
 		MontajeFecha:         "",
 		MontajeHoraInicio:    "",
@@ -180,4 +198,47 @@ func (s *Store) ObtenerSolicitudes(ctx context.Context) ([]models.Solicitud, err
 	copia := make([]models.Solicitud, len(s.solicitudes))
 	copy(copia, s.solicitudes)
 	return copia, nil
+}
+
+// RetirarSolicitud cambia a "Retirada por el cliente" una solicitud pendiente, de forma atómica.
+// No elimina nada: conserva motivo, snapshots y código; el evento queda libre para una nueva solicitud.
+func (s *Store) RetirarSolicitud(ctx context.Context, id uint, fechaRetiro string) (models.Solicitud, error) {
+	if err := ctx.Err(); err != nil {
+		return models.Solicitud{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.solicitudes {
+		if s.solicitudes[i].ID != id {
+			continue
+		}
+		if s.solicitudes[i].Estado != models.EstadoPendienteRevision {
+			return models.Solicitud{}, repositories.ErrSolicitudNoPendiente
+		}
+		s.solicitudes[i].Estado = models.EstadoRetiradaCliente
+		s.solicitudes[i].FechaRetiro = fechaRetiro
+		return s.solicitudes[i], nil
+	}
+	return models.Solicitud{}, repositories.ErrSolicitudNoEncontrada
+}
+
+// ObtenerBloqueos devuelve una copia de los bloqueos institucionales.
+func (s *Store) ObtenerBloqueos(ctx context.Context) ([]models.BloqueoInstitucional, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	copia := make([]models.BloqueoInstitucional, len(s.bloqueos))
+	copy(copia, s.bloqueos)
+	return copia, nil
+}
+
+// AgregarBloqueo registra un bloqueo institucional (útil en pruebas).
+func (s *Store) AgregarBloqueo(b models.BloqueoInstitucional) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bloqueos = append(s.bloqueos, b)
 }

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { App } from './app';
+import { AuthService } from './services/auth.service';
 import { SolicitudFormularioComponent } from './components/solicitud-formulario/solicitud-formulario.component';
 import { AsesorPortalComponent } from './components/asesor-portal/asesor-portal.component';
 import {
@@ -9,6 +10,7 @@ import {
   AdicionalItem,
   Evento,
   Solicitud,
+  Usuario,
   calcularComparativoAdicionales,
   contarCambiosSolicitud,
   formatearFechaHoraEnvio,
@@ -100,10 +102,39 @@ const SOLICITUD_PRUEBA: Solicitud = {
   },
 };
 
+/** Guarda una sesión vigente en sessionStorage; AuthService la restaura al crearse. */
+function iniciarSesionDePrueba(usuario: Usuario): void {
+  sessionStorage.setItem(
+    'showtech_sesion',
+    JSON.stringify({
+      token: 'token-de-prueba',
+      expira_en: new Date(Date.now() + 3600_000).toISOString(),
+      usuario,
+    }),
+  );
+}
+
+const USUARIO_CLIENTE: Usuario = {
+  id: 2,
+  correo: 'cliente@horizonte.com',
+  nombre: 'Promoción Horizonte 2026',
+  rol: 'cliente',
+  cliente_id: 'CLI-001',
+};
+
+const USUARIO_ASESOR: Usuario = {
+  id: 1,
+  correo: 'asesor@showtech.com',
+  nombre: 'Asesor(a) comercial',
+  rol: 'asesor',
+};
+
 describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', () => {
   let httpMock: HttpTestingController;
 
   beforeEach(async () => {
+    sessionStorage.clear();
+    iniciarSesionDePrueba(USUARIO_CLIENTE);
     await TestBed.configureTestingModule({
       imports: [App, SolicitudFormularioComponent, AsesorPortalComponent],
       providers: [provideHttpClient(), provideHttpClientTesting()],
@@ -114,6 +145,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
 
   afterEach(() => {
     httpMock.verify();
+    sessionStorage.clear();
   });
 
   it('debe iniciar en el paso 1 con cabecera SHOWTECH SOLUTIONS, ID numérico real, insignia Confirmado y estado vacío de solicitudes', () => {
@@ -334,6 +366,14 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       'Al enviar la solicitud, quedará pendiente de revisión. Tu reserva actual se mantendrá sin cambios.'
     );
 
+    // Bloque informativo de costos (referencial, sin total ni cobros automaticos)
+    const costos = compiled.querySelector('.bloque-costos-cliente')?.textContent ?? '';
+    expect(costos).toContain('Cargo por modificación');
+    expect(costos).toContain('S/ 100');
+    expect(costos).toContain('S/ 500 / hora');
+    expect(costos).toContain('Importe final pendiente de revisión por el asesor');
+    expect(costos).toContain('no genera deudas automáticas');
+
     // Volver del Paso 3 al Paso 2 debe conservar el borrador completo
     app.alModificarPropuestaDesdeRevision();
     fixture.detectChanges();
@@ -431,7 +471,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       'Tu reserva actual se mantiene sin cambios'
     );
     expect(compiled.querySelector('.badge-solicitud-pendiente')?.textContent).toContain('Pendiente de revisión');
-    expect(compiled.textContent).toContain('#1');
+    expect(compiled.textContent).toContain('SOL-2026-001');
     expect(compiled.textContent).toContain('Lanzamiento Corporativo Showtech 2026');
 
     // La tabla comparativa completa ya no está en el Paso 4, está disponible en "Ver detalle de la solicitud"
@@ -557,7 +597,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
     const dialog = compiled.querySelector('[role="dialog"]');
     expect(dialog).toBeTruthy();
     expect(dialog?.getAttribute('aria-modal')).toBe('true');
-    expect(dialog?.textContent).toContain('Solicitud #1');
+    expect(dialog?.textContent).toContain('Solicitud SOL-2026-001');
     expect(dialog?.textContent).toContain('Lanzamiento Corporativo Showtech 2026');
     expect(dialog?.textContent).toContain('Congreso Corporativo Showtech 2026');
     expect(dialog?.textContent).toContain('María Rodríguez');
@@ -1228,7 +1268,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
     fixture.detectChanges();
 
     const modalSubtitulo = el.querySelector('.modal-subtitulo');
-    expect(modalSubtitulo?.textContent).toContain('Solicitud #88');
+    expect(modalSubtitulo?.textContent).toContain('Solicitud SOL-2026-088');
     expect(modalSubtitulo?.textContent).toContain(`Fecha y hora de envío: ${textoFechaEsperado}`);
 
     // No debe haber duplicación bajo Espacio
@@ -1308,7 +1348,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
     expect(fila).toBeTruthy();
 
     const celdaCodigo = fila?.querySelector('.celda-codigo')?.textContent?.trim();
-    expect(celdaCodigo).toBe('#7');
+    expect(celdaCodigo).toBe('SOL-2026-007');
 
     const celdaEvento = fila?.querySelector('.celda-evento');
     expect(celdaEvento?.textContent).toContain('Lanzamiento Corporativo Showtech 2026');
@@ -1493,7 +1533,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
   });
 
   describe('Portal y Flujo del Asesor Comercial', () => {
-    it('permite alternar entre la vista del cliente y la vista del asesor comercial desde la cabecera', () => {
+    it('un cliente ve su portal, sin acceso a la vista del asesor, con su nombre y el botón de cerrar sesión', () => {
       const fixture = TestBed.createComponent(App);
       const app = fixture.componentInstance;
       fixture.detectChanges();
@@ -1504,35 +1544,52 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
-      // Inicia en la vista cliente
       expect(app.vistaActiva()).toBe('cliente');
-      const btnSwitchAsesor = el.querySelector('.btn-switch-vista') as HTMLButtonElement;
-      expect(btnSwitchAsesor).toBeTruthy();
-      expect(btnSwitchAsesor.textContent).toContain('Vista Asesor Comercial');
+      expect(el.querySelector('app-login')).toBeNull();
+      expect(el.querySelector('app-asesor-portal')).toBeNull();
+      expect(el.querySelector('.btn-switch-vista')).toBeNull();
+      expect(el.querySelector('.usuario-cabecera')?.textContent).toContain('Promoción Horizonte 2026');
+      expect(el.querySelector('.btn-cerrar-sesion')).toBeTruthy();
+    });
 
-      // Cambia a vista asesor
-      btnSwitchAsesor.click();
+    it('un asesor ve directamente su portal (sin botón para ir a la vista del cliente) y no se piden datos del cliente', () => {
+      TestBed.inject(AuthService).limpiarSesion();
+      iniciarSesionDePrueba(USUARIO_ASESOR);
+      TestBed.resetTestingModule();
+      return TestBed.configureTestingModule({
+        imports: [App],
+        providers: [provideHttpClient(), provideHttpClientTesting()],
+      })
+        .compileComponents()
+        .then(() => {
+          const http = TestBed.inject(HttpTestingController);
+          const fixture = TestBed.createComponent(App);
+          fixture.detectChanges();
+
+          // Solo el portal del asesor carga datos (una vez cada recurso)
+          http.expectOne('/api/eventos').flush([EVENTO_PRUEBA]);
+          http.expectOne('/api/solicitudes').flush([SOLICITUD_PRUEBA]);
+          http.expectOne('/api/adicionales').flush(CATALOGO_PRUEBA);
+          fixture.detectChanges();
+
+          const el: HTMLElement = fixture.nativeElement;
+          expect(fixture.componentInstance.vistaActiva()).toBe('asesor');
+          expect(el.querySelector('app-asesor-portal')).toBeTruthy();
+          expect(el.querySelector('.btn-volver-cliente')).toBeNull();
+          expect(el.querySelector('.usuario-cabecera')?.textContent).toContain('Asesor(a) comercial');
+          http.verify();
+        });
+    });
+
+    it('sin sesión muestra el login y no consulta datos del portal', () => {
+      TestBed.inject(AuthService).limpiarSesion();
+      const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
 
-      // El asesor portal realiza sus peticiones iniciales
-      httpMock.expectOne('/api/eventos').flush([EVENTO_PRUEBA]);
-      httpMock.expectOne('/api/solicitudes').flush([SOLICITUD_PRUEBA]);
-      httpMock.expectOne('/api/adicionales').flush(CATALOGO_PRUEBA);
-      fixture.detectChanges();
-
-      expect(app.vistaActiva()).toBe('asesor');
-      expect(el.querySelector('app-asesor-portal')).toBeTruthy();
-      expect(el.querySelector('.badge-rol-asesor')).toBeNull();
-      expect(el.querySelector('.marca')?.textContent).toContain('SHOWTECH SOLUTIONS');
-      expect(el.querySelector('.marca')?.textContent).not.toContain('Portal del Asesor');
-
-      // Botón para volver a la vista del cliente
-      const btnVolver = el.querySelector('.btn-volver-cliente') as HTMLButtonElement;
-      expect(btnVolver).toBeTruthy();
-      btnVolver.click();
-      fixture.detectChanges();
-
-      expect(app.vistaActiva()).toBe('cliente');
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('app-login')).toBeTruthy();
+      expect(el.querySelector('.layout-portal')).toBeNull();
+      httpMock.expectNone('/api/eventos');
     });
 
     it('Paso 1: muestra la tabla de eventos con sus columnas y la bandeja de solicitudes de 6 columnas', () => {
@@ -1628,7 +1685,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
 
       // Código con numeral (#1)
       const filaSol = tablaSolicitudes!.querySelector('tbody tr');
-      expect(filaSol?.querySelector('.th-codigo')?.textContent).toContain('#1');
+      expect(filaSol?.querySelector('.th-codigo')?.textContent).toContain('SOL-2026-001');
       expect(filaSol?.querySelector('.th-accion button')?.textContent).toContain('Revisar solicitud');
     });
 
@@ -1649,7 +1706,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       fixture.detectChanges();
 
       // Modal abierto
-      expect(el.querySelector('#modalRevisionTitulo')?.textContent).toContain('Revisión de solicitud #1');
+      expect(el.querySelector('#modalRevisionTitulo')?.textContent).toContain('Revisión de solicitud SOL-2026-001');
       expect(el.querySelector('.motivo-texto-completo')?.textContent).toContain(
         'Cambio de persona de contacto y retiro de opcionales'
       );
@@ -1962,7 +2019,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       expect(modal).toBeTruthy();
       expect(modal?.textContent).toContain('ID: 1');
       expect(modal?.textContent).not.toContain('EVT-');
-      expect(modal?.textContent).toContain('#1'); // Solicitud #1
+      expect(modal?.textContent).toContain('SOL-2026-001'); // Solicitud #1
     });
 
     it('Paso 2: estructura fiel del prototipo (grilla de 4 columnas, tiempos técnicos apilados, cronograma con timeline-pills y tabla de adicionales)', async () => {

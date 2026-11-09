@@ -4,20 +4,35 @@
     <div class="cabecera-acciones">
       <button
         type="button"
-        class="btn-demo btn-volver-cliente"
-        (click)="volverACliente.emit()"
-        title="Abrir portal del cliente"
+        class="btn-demo"
+        (click)="mostrarVinculo.set(!mostrarVinculo())"
+        [attr.aria-expanded]="mostrarVinculo()"
+        title="Asociar cuentas de Google con un cliente"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-          <circle cx="12" cy="7" r="4"></circle>
+        <span>Cuentas de Google</span>
+      </button>
+      <span class="usuario-cabecera">Usuario: {{ auth.usuario()?.nombre }}</span>
+      <button
+        type="button"
+        class="btn-demo btn-cerrar-sesion"
+        (click)="cerrarSesion()"
+        title="Cerrar sesión y volver a inicio"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
         </svg>
-        <span>&larr; Vista del Cliente</span>
+        <span>Cerrar sesión</span>
       </button>
     </div>
   </header>
 
   <main class="contenedor-portal">
+    @if (mostrarVinculo()) {
+      <app-vinculo-cuentas />
+    }
+
     <div class="encabezado-seccion">
       <h1>Modificar datos del evento</h1>
       <p class="sub">Actualice la información del evento, verifique la disponibilidad del auditorio y confirme los cambios en el sistema.</p>
@@ -290,12 +305,12 @@
             <tbody>
               @for (sol of solicitudesFiltradas(); track sol.id) {
                 <tr>
-                  <td class="th-codigo col-codigo"><strong>#{{ sol.id }}</strong></td>
+                  <td class="th-codigo col-codigo"><strong>{{ formatearCodigoSolicitud(sol) }}</strong></td>
                   <td class="th-evento col-evento">{{ nombreEventoSolicitud(sol) }}</td>
                   <td class="th-fecha col-fecha">{{ formatoEnvio(sol.fecha_creacion) }}</td>
                   <td class="th-cambios col-cambios">{{ resumenCambios(sol) }}</td>
                   <td class="th-estado col-estado">
-                    <span class="insignia-estado estado-pendiente">{{ sol.estado }}</span>
+                    <span class="insignia-estado" [class.estado-pendiente]="sol.estado !== estadoRetirada" [class.estado-retirada]="sol.estado === estadoRetirada">{{ sol.estado }}</span>
                   </td>
                   <td class="th-accion col-accion num-der">
                     <button
@@ -321,8 +336,8 @@
           @for (sol of solicitudesFiltradas(); track sol.id) {
             <div class="tarjeta-solicitud-card">
               <div class="tarjeta-solicitud-cab">
-                <span class="codigo-solicitud">#{{ sol.id }}</span>
-                <span class="insignia-estado estado-pendiente">{{ sol.estado }}</span>
+                <span class="codigo-solicitud">{{ formatearCodigoSolicitud(sol) }}</span>
+                <span class="insignia-estado" [class.estado-pendiente]="sol.estado !== estadoRetirada" [class.estado-retirada]="sol.estado === estadoRetirada">{{ sol.estado }}</span>
               </div>
               <div class="tarjeta-solicitud-evento">{{ nombreEventoSolicitud(sol) }}</div>
               <div class="tarjeta-solicitud-info">
@@ -524,7 +539,9 @@
                 </label>
                 <div class="campo-fecha-wrap" id="wrap_eventDate">
                   <input
-                    type="date"
+                    type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                     id="eventDate"
                     class="input-fecha"
                     required
@@ -557,7 +574,8 @@
                 </label>
                 <div class="campo-hora-wrap" id="wrap_eventStartTime">
                   <input
-                    type="time"
+                    type="text"
+ appSelector="hora"
                     id="eventStartTime"
                     class="input-hora"
                     required
@@ -588,7 +606,8 @@
                 </label>
                 <div class="campo-hora-wrap" id="wrap_eventEndTime">
                   <input
-                    type="time"
+                    type="text"
+ appSelector="hora"
                     id="eventEndTime"
                     class="input-hora"
                     required
@@ -642,7 +661,9 @@
                       </label>
                       <div class="campo-fecha-wrap" id="wrap_montajeDate">
                         <input
-                          type="date"
+                          type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                           id="montajeDate"
                           class="input-fecha"
                           [class.campo-modificado]="cambioMontajeFecha()"
@@ -673,7 +694,8 @@
                       </label>
                       <div class="campo-hora-wrap" id="wrap_montajeStartTime">
                         <input
-                          type="time"
+                          type="text"
+ appSelector="hora"
                           id="montajeStartTime"
                           class="input-hora"
                           [class.campo-modificado]="cambioMontajeInicio()"
@@ -702,7 +724,8 @@
                       </label>
                       <div class="campo-hora-wrap" id="wrap_montajeEndTime">
                         <input
-                          type="time"
+                          type="text"
+ appSelector="hora"
                           id="montajeEndTime"
                           class="input-hora"
                           [class.campo-modificado]="cambioMontajeFin()"
@@ -755,7 +778,9 @@
                       </label>
                       <div class="campo-fecha-wrap" id="wrap_desmontajeDate">
                         <input
-                          type="date"
+                          type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                           id="desmontajeDate"
                           class="input-fecha"
                           [class.campo-modificado]="cambioDesmontajeFecha()"
@@ -786,7 +811,8 @@
                       </label>
                       <div class="campo-hora-wrap" id="wrap_desmontajeStartTime">
                         <input
-                          type="time"
+                          type="text"
+ appSelector="hora"
                           id="desmontajeStartTime"
                           class="input-hora"
                           [class.campo-modificado]="cambioDesmontajeInicio()"
@@ -815,7 +841,8 @@
                       </label>
                       <div class="campo-hora-wrap" id="wrap_desmontajeEndTime">
                         <input
-                          type="time"
+                          type="text"
+ appSelector="hora"
                           id="desmontajeEndTime"
                           class="input-hora"
                           [class.campo-modificado]="cambioDesmontajeFin()"
@@ -871,7 +898,9 @@
                       </label>
                       <div class="campo-fecha-wrap" id="wrap_ensayoDate">
                         <input
-                          type="date"
+                          type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                           id="ensayoDate"
                           class="input-fecha"
                           [class.campo-modificado]="cambioEnsayoFecha()"
@@ -902,7 +931,8 @@
                       </label>
                       <div class="campo-hora-wrap" id="wrap_ensayoStartTime">
                         <input
-                          type="time"
+                          type="text"
+ appSelector="hora"
                           id="ensayoStartTime"
                           class="input-hora"
                           [class.campo-modificado]="cambioEnsayoInicio()"
@@ -931,7 +961,8 @@
                       </label>
                       <div class="campo-hora-wrap" id="wrap_ensayoEndTime">
                         <input
-                          type="time"
+                          type="text"
+ appSelector="hora"
                           id="ensayoEndTime"
                           class="input-hora"
                           [class.campo-modificado]="cambioEnsayoFin()"
@@ -1529,7 +1560,7 @@
       <div class="modal-dialog modal-dialog-lg">
         <div class="modal-header">
           <h3 class="modal-title" id="modalRevisionTitulo">
-            Revisión de solicitud #{{ solicitudSeleccionadaModal()?.id }}
+            Revisión de solicitud {{ solicitudSeleccionadaModal() ? formatearCodigoSolicitud(solicitudSeleccionadaModal()!) : '' }}
           </h3>
           <button
             type="button"
@@ -1559,7 +1590,7 @@
             </div>
             <div>
               <small>Estado</small>
-              <span class="insignia-estado estado-pendiente">{{ solicitudSeleccionadaModal()?.estado }}</span>
+              <span class="insignia-estado" [class.estado-pendiente]="solicitudSeleccionadaModal()?.estado !== estadoRetirada" [class.estado-retirada]="solicitudSeleccionadaModal()?.estado === estadoRetirada">{{ solicitudSeleccionadaModal()?.estado }}</span>
             </div>
           </div>
 

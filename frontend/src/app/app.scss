@@ -1,3 +1,12 @@
+.reiniciando {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gris);
+  font-size: 14px;
+}
+
 .layout-portal {
   min-height: 100vh;
   display: flex;
@@ -180,6 +189,12 @@
   border: 1px solid #f6d17b;
 }
 
+.etiqueta-retirada {
+  background: #f1f3f8;
+  color: #4b5563;
+  border: 1px solid #d1d5db;
+}
+
 .val-tachado {
   text-decoration: line-through;
   color: #64748b;
@@ -242,7 +257,7 @@
 
 .sin-cambio-texto {
   font-size: 12px;
-  color: #6b7280;
+  color: #626a78;
 }
 
 .bloque-motivo-revision {
@@ -270,7 +285,7 @@
 
 .et-reserva-vigente {
   background: #e6f7ef;
-  color: #1e8e5a;
+  color: #17744a;
   border: 1px solid #a3e0c0;
   font-size: 11.5px;
   font-weight: 700;
@@ -672,7 +687,7 @@
 
 .badge-adic-inc {
   background: #e6f7ef;
-  color: #1e8e5a;
+  color: #17744a;
   border: 1px solid #a3e0c0;
 }
 

@@ -37,7 +37,7 @@
     }
     .opc {
       font-weight: normal;
-      color: var(--gris, #6b7280);
+      color: var(--gris, #626a78);
       font-size: 12px;
     }
   }
@@ -67,7 +67,7 @@
 
     &[readonly] {
       background: var(--suave, #f4f6fb);
-      color: var(--gris, #6b7280);
+      color: var(--gris, #626a78);
       cursor: not-allowed;
     }
 
@@ -98,7 +98,7 @@
 
   .ayuda {
     font-size: 12px;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
     margin-top: 4px;
   }
 
@@ -220,7 +220,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
     pointer-events: none;
     transition: color 0.15s ease;
   }
@@ -295,7 +295,7 @@
     display: block;
     margin-top: 8px;
     font-size: 12px;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
   }
 }
 
@@ -387,7 +387,7 @@
   .resumen-horario-titulo {
     font-size: 12px;
     font-weight: bold;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
@@ -535,7 +535,7 @@
 
   .input-readonly {
     background: var(--suave, #f4f6fb) !important;
-    color: var(--gris, #6b7280) !important;
+    color: var(--gris, #626a78) !important;
     cursor: not-allowed;
   }
 
@@ -640,7 +640,7 @@
 .adicionales-vacio-msg {
   padding: 18px;
   text-align: center;
-  color: var(--gris, #6b7280);
+  color: var(--gris, #626a78);
   font-size: 13.5px;
   background: #fafbfc;
 }
@@ -803,7 +803,7 @@
 
   .col-actual {
     width: 36%;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
   }
 
   .col-propuesto {
@@ -864,7 +864,7 @@
   small {
     display: block;
     font-size: 11px;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
     margin-bottom: 2px;
   }
 
@@ -877,12 +877,12 @@
 
   span {
     font-size: 11.5px;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
   }
 }
 
 .diff-mas {
-  color: #1e8e5a !important;
+  color: #17744a !important;
 }
 
 .diff-menos {
@@ -890,7 +890,7 @@
 }
 
 .diff-cero {
-  color: var(--gris, #6b7280) !important;
+  color: var(--gris, #626a78) !important;
 }
 
 .resumen-comercial-grid {
@@ -917,7 +917,7 @@
 
 .comercial-sub {
   font-size: 12px;
-  color: var(--gris, #6b7280);
+  color: var(--gris, #626a78);
 }
 
 .importe-pendiente {
@@ -1015,7 +1015,7 @@
 }
 
 .comp-etiq {
-  color: var(--gris, #6b7280);
+  color: var(--gris, #626a78);
 }
 
 .comp-val {
@@ -1116,7 +1116,7 @@
   small {
     display: block;
     font-size: 11px;
-    color: var(--gris, #6b7280);
+    color: var(--gris, #626a78);
     margin-bottom: 2px;
   }
 

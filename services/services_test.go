@@ -44,6 +44,10 @@ func (r *repoFalloSimulado) ObtenerSolicitudes(ctx context.Context) ([]models.So
 	return r.base.ObtenerSolicitudes(ctx)
 }
 
+func (r *repoFalloSimulado) RetirarSolicitud(ctx context.Context, id uint, fecha string) (models.Solicitud, error) {
+	return r.base.RetirarSolicitud(ctx, id, fecha)
+}
+
 func (r *repoFalloSimulado) CrearSolicitud(ctx context.Context, sol models.Solicitud) (models.Solicitud, error) {
 	if r.errCrearSolicitud != nil {
 		return models.Solicitud{}, r.errCrearSolicitud
@@ -1001,4 +1005,42 @@ func TestSolicitudServiceAdicionales(t *testing.T) {
 			t.Fatalf("el evento original en el repositorio fue mutado: %+v", evDespues.Adicionales)
 		}
 	})
+}
+
+// Retirar la misma solicitud desde muchas goroutinas debe tener exactamente un éxito (operación atómica).
+func TestRetirarSolicitudConcurrenteUnSoloExito(t *testing.T) {
+	store := storage.NewMemoryStore()
+	svc := services.NewSolicitudService(store, store)
+	cliente := models.Usuario{Correo: "c@prueba.test", Rol: models.RolCliente, ClienteID: "CLI-001"}
+
+	creada, err := svc.CrearSolicitud(context.Background(), models.SolicitudCreacionDTO{
+		EventoID: 1, Motivo: "prueba", FechaPropuesta: "2026-12-01", HoraInicioPropuesta: "10:00", HoraFinPropuesta: "12:00",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const intentos = 20
+	resultados := make(chan error, intentos)
+	for i := 0; i < intentos; i++ {
+		go func() {
+			_, err := svc.RetirarSolicitud(context.Background(), cliente, creada.ID)
+			resultados <- err
+		}()
+	}
+	exitos, noPendientes := 0, 0
+	for i := 0; i < intentos; i++ {
+		err := <-resultados
+		switch {
+		case err == nil:
+			exitos++
+		case errors.Is(err, services.ErrSolicitudNoPendiente):
+			noPendientes++
+		default:
+			t.Errorf("error inesperado: %v", err)
+		}
+	}
+	if exitos != 1 || noPendientes != intentos-1 {
+		t.Errorf("se esperaba 1 éxito y %d rechazos, hubo %d y %d", intentos-1, exitos, noPendientes)
+	}
 }

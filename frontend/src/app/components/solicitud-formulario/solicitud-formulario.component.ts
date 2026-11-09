@@ -18,11 +18,12 @@ import {
   textoObligatorioUnicodeValidator,
   textoOpcionalUnicodeValidator,
 } from '../../validators/solicitud.validators';
+import { SelectorFechaHoraDirective } from '../../directives/selector-fecha-hora.directive';
 
 @Component({
   selector: 'app-solicitud-formulario',
   standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [SelectorFechaHoraDirective, ReactiveFormsModule],
   template: `
     <section class="tarjeta paso-formulario" id="cs2" aria-labelledby="titulo-paso-2">
       <div class="tarjeta-cabecera-flex">
@@ -237,7 +238,9 @@ import {
                 <div class="campo-fecha-wrap" id="wrap_eventDate">
                   <input
                     id="eventDate"
-                    type="date"
+                    type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                     required
                     formControlName="fecha_propuesta"
                     class="input-fecha"
@@ -284,10 +287,8 @@ import {
                 <div class="campo-hora-wrap" id="wrap_eventStartTime">
                   <input
                     id="eventStartTime"
-                    type="time"
-                    min="06:00"
-                    max="22:00"
-                    step="60"
+                    type="text"
+ appSelector="hora"
                     placeholder="09:00"
                     required
                     formControlName="hora_inicio_propuesta"
@@ -335,10 +336,8 @@ import {
                 <div class="campo-hora-wrap" id="wrap_eventEndTime">
                   <input
                     id="eventEndTime"
-                    type="time"
-                    min="06:00"
-                    max="22:00"
-                    step="60"
+                    type="text"
+ appSelector="hora"
                     placeholder="13:00"
                     required
                     formControlName="hora_fin_propuesta"
@@ -412,7 +411,9 @@ import {
                     </label>
                     <div class="campo-fecha-wrap" id="wrap_montajeDate">
                       <input
-                        type="date"
+                        type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                         id="montajeDate"
                         formControlName="montaje_fecha"
                         class="input-fecha"
@@ -445,12 +446,10 @@ import {
                     </label>
                     <div class="campo-hora-wrap" id="wrap_montajeStartTime">
                       <input
-                        type="time"
+                        type="text"
+ appSelector="hora"
                         id="montajeStartTime"
                         formControlName="montaje_hora_inicio"
-                        min="06:00"
-                        max="22:00"
-                        step="60"
                         class="input-hora"
                         [class.campo-modificado]="montajeInicioModificado"
                         [class.input-error]="mostrarErrorControl('montaje_hora_inicio')"
@@ -479,12 +478,10 @@ import {
                     </label>
                     <div class="campo-hora-wrap" id="wrap_montajeEndTime">
                       <input
-                        type="time"
+                        type="text"
+ appSelector="hora"
                         id="montajeEndTime"
                         formControlName="montaje_hora_fin"
-                        min="06:00"
-                        max="22:00"
-                        step="60"
                         class="input-hora"
                         [class.campo-modificado]="montajeFinModificado"
                         [class.input-error]="mostrarErrorControl('montaje_hora_fin')"
@@ -535,7 +532,9 @@ import {
                     </label>
                     <div class="campo-fecha-wrap" id="wrap_desmontajeDate">
                       <input
-                        type="date"
+                        type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                         id="desmontajeDate"
                         formControlName="desmontaje_fecha"
                         class="input-fecha"
@@ -568,12 +567,10 @@ import {
                     </label>
                     <div class="campo-hora-wrap" id="wrap_desmontajeStartTime">
                       <input
-                        type="time"
+                        type="text"
+ appSelector="hora"
                         id="desmontajeStartTime"
                         formControlName="desmontaje_hora_inicio"
-                        min="06:00"
-                        max="22:00"
-                        step="60"
                         class="input-hora"
                         [class.campo-modificado]="desmontajeInicioModificado"
                         [class.input-error]="mostrarErrorControl('desmontaje_hora_inicio')"
@@ -602,12 +599,10 @@ import {
                     </label>
                     <div class="campo-hora-wrap" id="wrap_desmontajeEndTime">
                       <input
-                        type="time"
+                        type="text"
+ appSelector="hora"
                         id="desmontajeEndTime"
                         formControlName="desmontaje_hora_fin"
-                        min="06:00"
-                        max="22:00"
-                        step="60"
                         class="input-hora"
                         [class.campo-modificado]="desmontajeFinModificado"
                         [class.input-error]="mostrarErrorControl('desmontaje_hora_fin')"
@@ -661,7 +656,9 @@ import {
                     </label>
                     <div class="campo-fecha-wrap" id="wrap_ensayoDate">
                       <input
-                        type="date"
+                        type="text"
+ appSelector="fecha"
+ placeholder="dd/mm/aaaa"
                         id="ensayoDate"
                         formControlName="ensayo_fecha"
                         class="input-fecha"
@@ -694,12 +691,10 @@ import {
                     </label>
                     <div class="campo-hora-wrap" id="wrap_ensayoStartTime">
                       <input
-                        type="time"
+                        type="text"
+ appSelector="hora"
                         id="ensayoStartTime"
                         formControlName="ensayo_hora_inicio"
-                        min="06:00"
-                        max="22:00"
-                        step="60"
                         class="input-hora"
                         [class.campo-modificado]="ensayoInicioModificado"
                         [class.input-error]="mostrarErrorControl('ensayo_hora_inicio')"
@@ -728,12 +723,10 @@ import {
                     </label>
                     <div class="campo-hora-wrap" id="wrap_ensayoEndTime">
                       <input
-                        type="time"
+                        type="text"
+ appSelector="hora"
                         id="ensayoEndTime"
                         formControlName="ensayo_hora_fin"
-                        min="06:00"
-                        max="22:00"
-                        step="60"
                         class="input-hora"
                         [class.campo-modificado]="ensayoFinModificado"
                         [class.input-error]="mostrarErrorControl('ensayo_hora_fin')"

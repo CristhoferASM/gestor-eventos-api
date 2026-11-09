@@ -2,7 +2,7 @@
 
 Este repositorio contiene el backend en desarrollo para el **Gestor de Eventos de SHOWTECH SOLUTIONS**, construido en **Go** con el framework HTTP **Gin**.
 
-Actualmente el proyecto opera con almacenamiento en memoria protegido por exclusión mutua (`sync.RWMutex`) y estructura sus responsabilidades en capas (`handlers`, `services`, `repositories` y `storage`) para preparar la futura integración con **PostgreSQL**.
+Actualmente el proyecto opera con almacenamiento en memoria protegido por exclusión mutua (`sync.RWMutex`) y estructura sus responsabilidades en capas (`handlers`, `services`, `repositories` y `storage`) y puede guardar los datos en **PostgreSQL** (variable `DATABASE_URL`) o, si no se define, en memoria.
 
 ---
 
@@ -16,36 +16,50 @@ gestor-eventos-api/
 ├── main.go                       # Punto de entrada: ensambla almacenamiento, servicios y enrutador HTTP
 │
 ├── models/
-│   ├── evento.go                 # Estructura de datos Evento
-│   └── solicitud.go              # Estructuras Solicitud, SolicitudCreacionDTO y DatosHorario
+│   ├── evento.go                 # Estructura de datos Evento (incluye cliente_id, el dueño del evento)
+│   ├── solicitud.go              # Estructuras Solicitud, SolicitudCreacionDTO y DatosHorario
+│   └── usuario.go                # Usuario, desafío de verificación, sesión y DTOs de autenticación
 │
 ├── repositories/
 │   └── repositories.go           # Interfaces EventoRepository y SolicitudRepository + errores de dominio/datos
 │
 ├── storage/
-│   └── memory.go                 # Implementación en memoria de los repositorios (protegida con sync.RWMutex)
+│   ├── memory.go                 # Implementación en memoria de los repositorios (protegida con sync.RWMutex)
+│   └── auth_memory.go            # Usuarios, desafíos y sesiones en memoria + cuentas demo
 │
 ├── services/
 │   ├── errors.go                 # Errores de validación e identificación de fallos de negocio
 │   ├── evento_service.go         # Lógica de negocio para consulta de eventos
 │   ├── solicitud_service.go      # Validaciones, construcción de snapshots y coordinación de solicitudes
-│   └── services_test.go          # Pruebas unitarias de servicios (sin servidor HTTP)
+│   ├── auth_service.go           # Acceso en dos pasos, sesiones, acceso con Google y filtrado por rol
+│   ├── services_test.go          # Pruebas unitarias de servicios (sin servidor HTTP)
+│   └── auth_service_test.go      # Pruebas del acceso en dos pasos y las sesiones
+│
+├── notificaciones/
+│   └── consola.go                # Notificador de desarrollo: imprime el código de verificación en el registro del servidor
+│
+├── googleauth/
+│   └── verificador.go            # Valida ID tokens de Firebase (firma RS256 + claims) con la biblioteca estándar
 │
 ├── handlers/
 │   ├── routes.go                 # Configuración de rutas de Gin, CORS y proxies confiables
 │   ├── health.go                 # Handler para GET /health
 │   ├── eventos.go                # Handlers HTTP para GET /eventos y GET /eventos/:id
 │   ├── solicitudes.go            # Handlers HTTP para POST /solicitudes y GET /solicitudes
-│   └── handlers_test.go          # Pruebas de integración HTTP sobre los endpoints
+│   ├── auth.go                   # Handlers /auth/* y middleware RequiereSesion
+│   ├── handlers_test.go          # Pruebas de integración HTTP sobre los endpoints
+│   └── auth_test.go              # Pruebas HTTP de autenticación, roles y acceso con Google
 │
 ├── frontend/                     # Aplicación web Angular (standalone + SCSS)
 │   ├── proxy.conf.json           # Proxy de desarrollo (/api -> http://127.0.0.1:8081)
 │   ├── package.json              # Scripts y dependencias de Angular
 │   └── src/app/
 │       ├── models/               # Interfaces TypeScript alineadas con el JSON del backend
-│       ├── services/             # Servicio HTTP tipado (EventosApiService) y pruebas
+│       ├── services/             # EventosApiService, AuthService (sesión) y GoogleAuthService (Firebase)
+│       ├── directives/           # SelectorFechaHoraDirective: fecha y hora con Flatpickr (formularios reactivos y ngModel)
+│       ├── interceptors/         # authInterceptor: adjunta el token Bearer y gestiona el 401
 │       ├── validators/           # Validadores de formulario reactivo (HH:mm, rango, Unicode)
-│       └── components/           # Componentes de listado de eventos, formulario y solicitudes
+│       └── components/           # Login, listado de eventos, formulario, solicitudes y portal del asesor
 │
 └── README.md                     # Documentación técnica del proyecto
 ```
@@ -87,9 +101,26 @@ flowchart LR
     Models -.-> MemoryStore
 ```
 
-### B. Futura Conexión con PostgreSQL
+### B. Conexión con PostgreSQL
 
-Cuando el equipo defina el mecanismo de acceso a datos en PostgreSQL (la elección entre ORM y SQL directo continúa pendiente de acuerdo con el equipo), se agregará una implementación concreta de las interfaces de `repositories/` sin alterar el contrato HTTP de los handlers:
+Si defines `DATABASE_URL` el backend usa PostgreSQL (acceso con `pgx`, SQL directo; la elección entre ORM y SQL directo sigue pendiente de acordar con el equipo y está aislada detrás de las interfaces de `repositories/`). Sin ella, usa memoria como antes. Las migraciones (`storage/migraciones/`) se aplican solas al arrancar, y los datos de demostración se cargan solo si faltan.
+
+```powershell
+# Base de datos de desarrollo en un contenedor (una sola vez)
+docker run -d --name showtech-postgres -e POSTGRES_USER=showtech -e POSTGRES_PASSWORD=showtech_dev -e POSTGRES_DB=gestor_eventos -p 127.0.0.1:5433:5432 -v showtech_pgdata:/var/lib/postgresql/data postgres:16-alpine
+
+# Arrancar el backend con datos persistentes
+$env:DATABASE_URL = "postgres://showtech:showtech_dev@127.0.0.1:5433/gestor_eventos?sslmode=disable"
+go run .
+
+# Pruebas de integración contra PostgreSQL (cada prueba usa un esquema propio y lo borra)
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+go test ./storage -count=1
+```
+
+Las reglas importantes las impone la propia base de datos: un índice único parcial garantiza una sola solicitud pendiente por evento (aun con peticiones simultáneas) y el retiro es un `UPDATE` condicional atómico. Los tokens de sesión, los ids de verificación y los ids de navegador se guardan solo como hash SHA-256.
+
+Diagrama de la arquitectura prevista:
 
 ```mermaid
 flowchart LR
@@ -160,6 +191,13 @@ Para detener el servidor, presiona `Ctrl + C` en la terminal.
 & "C:\Program Files\Go\bin\go.exe" test -count=1 ./...
 ```
 
+### B2. Pruebas de extremo a extremo (navegador real)
+```powershell
+cd frontend
+npm run e2e
+```
+Arranca un backend nuevo (`:8082`) y el frontend (`:4300`) sin tocar los servidores de desarrollo, y usa el Chrome instalado. Incluye accesibilidad (axe-core) y revisión móvil. El workflow `.github/workflows/ci.yml` ejecuta backend, frontend y E2E en cada push.
+
 ### C. Iniciar y verificar el frontend Angular (`http://localhost:4200`)
 
 El frontend implementa el recorrido del portal en **cuatro pasos** conectado a la API real (`GET /api/eventos`, `GET /api/solicitudes` y `POST /api/solicitudes`), mostrando una sección principal visible por vez:
@@ -186,7 +224,41 @@ npx ng test --watch=false
 
 ---
 
+## 5b. Variables de entorno y seguridad
+
+| Variable | Para qué sirve | Por defecto |
+| :--- | :--- | :--- |
+| `API_ADDR` | Dirección del backend | `127.0.0.1:8081` |
+| `CORS_ORIGINS` | Orígenes del navegador permitidos (separados por comas) | `http://localhost:4200,http://127.0.0.1:4200` |
+| `COOKIE_SECURE` | `true` = la cookie de sesión solo viaja por HTTPS (obligatorio en producción) | `false` |
+| `MODO_DEMO` | `false` = el código de verificación no se devuelve en la respuesta (solo se imprime en el registro del servidor) | `true` |
+| `DATABASE_URL` | Cadena de conexión de PostgreSQL; si falta, se usa memoria | (vacía) |
+| `CARGAR_DEMO` | `false` = no sembrar eventos y cuentas de demostración en PostgreSQL | `true` |
+| `FIREBASE_PROJECT_ID` | Proyecto de Firebase que valida el acceso con Google | `showtech-prototipo` |
+
+- La sesión viaja en una cookie `HttpOnly` + `SameSite=Strict`: el JavaScript de la página no puede leerla.
+- Tras 5 contraseñas erróneas, el correo se bloquea 15 minutos.
+- Al asesor se le pide el código de verificación una vez por día de Lima y por navegador; la contraseña siempre.
+- Una solicitud que choca con otra reserva o con un bloqueo institucional se rechaza (409) sin revelar datos de otros clientes.
+
 ## 6. Ejemplos de Uso desde PowerShell (`Invoke-RestMethod`)
+
+Todas las rutas de negocio (`/eventos`, `/eventos/:id`, `/adicionales`, `/solicitudes`) exigen sesión; solo `/health` y `/auth/login|verificar|reenviar-codigo|google` son públicas. Los ejemplos 2 a 7 usan la variable `$h` que se crea en el ejemplo 0.
+
+### 0. Iniciar sesión (acceso en dos pasos) y preparar la cabecera `Authorization`
+```powershell
+# Paso 1: correo y contraseña (cuentas demo: asesor@showtech.com / Asesor2026!  y  cliente@horizonte.com / Cliente2026!)
+$login = @{ correo = "cliente@horizonte.com"; password = "Cliente2026!" } | ConvertTo-Json
+$desafio = Invoke-RestMethod -Uri "http://127.0.0.1:8081/auth/login" -Method Post -Body $login -ContentType "application/json"
+
+# Paso 2: código de 6 dígitos. La verificación por correo es SIMULADA: el código viene en codigo_prueba.
+$verif = @{ desafio_id = $desafio.desafio_id; codigo = $desafio.codigo_prueba } | ConvertTo-Json
+$sesion = Invoke-RestMethod -Uri "http://127.0.0.1:8081/auth/verificar" -Method Post -Body $verif -ContentType "application/json"
+
+$h = @{ Authorization = "Bearer $($sesion.token)" }
+Invoke-RestMethod -Uri "http://127.0.0.1:8081/auth/me" -Method Get -Headers $h | ConvertTo-Json
+```
+Respuestas: `401` credenciales o código incorrectos (o token ausente/vencido), `429` demasiados intentos (5) o reenvío antes de 30 s, `403` si un correo de cuenta con contraseña intenta entrar por Google. El código vence a los 60 s y la sesión dura 8 h. Para cerrar sesión: `Invoke-RestMethod -Uri "http://127.0.0.1:8081/auth/logout" -Method Post -Headers $h`.
 
 ### 1. Consultar estado del servicio (`GET /health`)
 ```powershell
@@ -195,24 +267,24 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8081/health" -Method Get | ConvertTo-Js
 
 ### 2. Listar eventos (`GET /eventos`)
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8081/eventos" -Method Get | ConvertTo-Json
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/eventos" -Method Get | ConvertTo-Json
 ```
 
 ### 3. Consultar detalle de un evento (`GET /eventos/:id`)
 ```powershell
 # Evento existente (HTTP 200)
-Invoke-RestMethod -Uri "http://127.0.0.1:8081/eventos/1" -Method Get | ConvertTo-Json
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/eventos/1" -Method Get | ConvertTo-Json
 
 # Evento inexistente (HTTP 404)
 try {
-    Invoke-RestMethod -Uri "http://127.0.0.1:8081/eventos/99" -Method Get
+    Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/eventos/99" -Method Get
 } catch {
     Write-Host "Código devuelto: $($_.Exception.Response.StatusCode.value__)"
 }
 
 # ID inválido o cero (HTTP 400)
 try {
-    Invoke-RestMethod -Uri "http://127.0.0.1:8081/eventos/0" -Method Get
+    Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/eventos/0" -Method Get
 } catch {
     Write-Host "Código devuelto: $($_.Exception.Response.StatusCode.value__)"
 }
@@ -228,12 +300,12 @@ $solicitudValida = @{
     hora_fin_propuesta    = "14:00"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://127.0.0.1:8081/solicitudes" -Method Post -Body $solicitudValida -ContentType "application/json" | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/solicitudes" -Method Post -Body $solicitudValida -ContentType "application/json" | ConvertTo-Json -Depth 5
 ```
 
 ### 5. Consultar solicitudes registradas (`GET /solicitudes`)
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8081/solicitudes" -Method Get | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/solicitudes" -Method Get | ConvertTo-Json -Depth 5
 ```
 
 ### 6. Intentar registrar una segunda solicitud pendiente para el mismo evento (HTTP 409)
@@ -246,11 +318,28 @@ try {
         hora_inicio_propuesta = "11:00"
         hora_fin_propuesta    = "15:00"
     } | ConvertTo-Json
-    Invoke-RestMethod -Uri "http://127.0.0.1:8081/solicitudes" -Method Post -Body $solicitudDuplicada -ContentType "application/json"
+    Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/solicitudes" -Method Post -Body $solicitudDuplicada -ContentType "application/json"
 } catch {
     Write-Host "Conflicto esperado detectado: Código $($_.Exception.Response.StatusCode.value__)"
 }
 ```
+
+### 6b. Retirar una solicitud pendiente (`POST /solicitudes/:id/retirar`)
+Solo el cliente dueño del evento puede retirarla y solo mientras siga "Pendiente de revisión". La solicitud no se elimina: pasa a "Retirada por el cliente" y el evento queda libre para una nueva solicitud.
+```powershell
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/solicitudes/1/retirar" -Method Post | ConvertTo-Json -Depth 5
+```
+Respuestas: `200` retirada, `400` id inválido, `401` sin sesión, `403` si es el asesor, `404` si no existe o es de otro cliente, `409` si ya no estaba pendiente.
+
+### 6c. Vincular una cuenta de Google con un cliente (solo asesor)
+```powershell
+# Inicia sesión como asesor (ejemplo 0) y usa su cabecera $h
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/usuarios/pendientes-de-vinculo" -Method Get | ConvertTo-Json
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/clientes" -Method Get | ConvertTo-Json
+$vinculo = @{ correo = "ana@gmail.com"; cliente_id = "CLI-002" } | ConvertTo-Json
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/usuarios/vincular" -Method Post -Body $vinculo -ContentType "application/json"
+```
+Respuestas: `403` si no eres asesor, `400` si la cuenta no existe, no es de Google o el cliente no existe.
 
 ### 7. Intentar registrar un horario con formato u orden inválido (HTTP 400)
 ```powershell
@@ -262,7 +351,7 @@ try {
         hora_inicio_propuesta = "9:00"
         hora_fin_propuesta    = "12:00"
     } | ConvertTo-Json
-    Invoke-RestMethod -Uri "http://127.0.0.1:8081/solicitudes" -Method Post -Body $horarioInvalido -ContentType "application/json"
+    Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/solicitudes" -Method Post -Body $horarioInvalido -ContentType "application/json"
 } catch {
     Write-Host "Error de validación esperado: Código $($_.Exception.Response.StatusCode.value__)"
 }
@@ -276,6 +365,6 @@ try {
   - Las estructuras de snapshots `datos_originales` y `datos_propuestos` contienen la información general del evento (`nombre`, `espacio`, `contacto`, `telefono`, `correo`, `observaciones`) junto con fecha y horario.
   - Para solicitudes históricas o creadas sin datos de contacto, la interfaz presenta `"Dato no disponible en este registro"`.
   - Para campos opcionales (`telefono`, `correo`, `observaciones`) que hayan sido explícitamente vaciados o no provistos en registros vigentes, la interfaz presenta `"Sin especificar"`.
-- **Persistencia en memoria volátil**: Los datos se reinician al detener el proceso. La integración con PostgreSQL y la definición entre ORM o SQL directo se abordarán en una siguiente etapa.
+- **Persistencia**: con `DATABASE_URL` los datos se guardan en PostgreSQL y sobreviven a los reinicios; sin ella siguen en memoria y se pierden al detener el proceso. Falta acordar ORM o SQL directo con el ingeniero (hoy SQL directo con `pgx`), definir el despliegue y las copias de seguridad.
 - **Formato y manejo de `fecha_creacion`**: Las nuevas solicitudes se generan en estándar RFC 3339 con offset de zona horaria explícito (`time.RFC3339`, como `2026-11-06T15:05:32-05:00`). El frontend convierte de forma consistente estos instantes a la zona horaria `America/Lima` (`DD/MM/YYYY, HH:mm:ss`), manteniendo a la vez compatibilidad retroactiva completa con registros legacy que contengan formato `"YYYY-MM-DD HH:MM:SS"`.
-- **Operaciones de ciclo de vida, propiedad y seguridad**: Aún no están implementados la autenticación, el filtrado por propietario de eventos/solicitudes (por lo que la interfaz presenta el catálogo general de `"Eventos"` y `"Solicitudes de modificación"` sin simular cuentas de usuario) ni los flujos de retiro, aprobación o rechazo de solicitudes.
+- **Autenticación y propiedad**: el acceso es en dos pasos (correo y contraseña, y luego un código de 6 dígitos cuyo envío por correo es **simulado**: el código viaja en `codigo_prueba`; debe retirarse al integrar un servicio de correo real). También hay acceso con Google (Firebase, proyecto `showtech-prototipo`, configurable con `FIREBASE_PROJECT_ID`): las cuentas de Google entran como cliente sin eventos vinculados y no pueden usar un correo que ya tenga contraseña. Los usuarios y sesiones están en memoria (se pierden al reiniciar). El asesor ve todos los eventos y solicitudes; el cliente solo los de su `cliente_id` (el evento ajeno responde 404). Para usar Google en local, `localhost` debe estar en los dominios autorizados de Firebase Console. Siguen pendientes la vinculación de cuentas de Google con un cliente, el atajo diario de verificación del asesor, la recuperación de contraseña, el bloqueo por intentos de contraseña y la aprobación y el rechazo de solicitudes por el asesor. El retiro por el cliente sí está implementado (sin cargos; regla pendiente de validar con el ingeniero).

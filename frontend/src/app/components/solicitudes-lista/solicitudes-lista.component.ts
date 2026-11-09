@@ -1,8 +1,10 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import {
   AdicionalCatalogo,
+  ESTADO_RETIRADA_CLIENTE,
   Evento,
   Solicitud,
+  formatearCodigoSolicitud,
   formatearFechaHoraEnvio,
   obtenerResumenCambiosSolicitud,
 } from '../../models/gestor-eventos.models';
@@ -78,7 +80,7 @@ import {
               @for (sol of solicitudes; track sol.id) {
                 <tr>
                   <td class="celda-codigo">
-                    <span class="badge-solicitud-codigo">#{{ sol.id }}</span>
+                    <span class="badge-solicitud-codigo">{{ formatearCodigoSolicitud(sol) }}</span>
                   </td>
                   <td class="celda-evento">
                     <span class="evento-nombre">{{ obtenerNombreEventoSolicitud(sol) }}</span>
@@ -91,7 +93,7 @@ import {
                     <span class="texto-cambios-solicitados">{{ obtenerResumenCambios(sol) }}</span>
                   </td>
                   <td class="celda-estado">
-                    <span class="badge-solicitud-pendiente">{{ sol.estado }}</span>
+                    <span [class.badge-solicitud-pendiente]="sol.estado !== estadoRetirada" [class.badge-solicitud-retirada]="sol.estado === estadoRetirada">{{ sol.estado }}</span>
                   </td>
                   <td class="num-der celda-accion">
                     <button
@@ -113,8 +115,8 @@ import {
           @for (sol of solicitudes; track sol.id) {
             <article class="tarjeta-solicitud-movil">
               <div class="tarjeta-solicitud-movil__cabecera">
-                <span class="badge-solicitud-codigo">#{{ sol.id }}</span>
-                <span class="badge-solicitud-pendiente">{{ sol.estado }}</span>
+                <span class="badge-solicitud-codigo">{{ formatearCodigoSolicitud(sol) }}</span>
+                <span [class.badge-solicitud-pendiente]="sol.estado !== estadoRetirada" [class.badge-solicitud-retirada]="sol.estado === estadoRetirada">{{ sol.estado }}</span>
               </div>
 
               <h4 class="tarjeta-solicitud-movil__evento">
@@ -387,6 +389,8 @@ import {
   ],
 })
 export class SolicitudesListaComponent {
+  readonly estadoRetirada = ESTADO_RETIRADA_CLIENTE;
+  readonly formatearCodigoSolicitud = formatearCodigoSolicitud;
   readonly formatearFechaHoraEnvio = formatearFechaHoraEnvio;
 
   @Input() solicitudes: Solicitud[] = [];

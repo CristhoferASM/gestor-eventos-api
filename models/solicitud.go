@@ -84,6 +84,10 @@ type SolicitudCreacionDTO struct {
 // EstadoPendienteRevision es el estado inicial asignado a toda solicitud recién registrada.
 const EstadoPendienteRevision = "Pendiente de revisión"
 
+// EstadoRetiradaCliente es el estado de una solicitud que el propio cliente retiró mientras estaba pendiente.
+// La solicitud se conserva íntegra en el historial; solo cambia su estado.
+const EstadoRetiradaCliente = "Retirada por el cliente"
+
 // Solicitud representa el registro de una solicitud de modificación de evento.
 type Solicitud struct {
 	ID                          uint                           `json:"id"`
@@ -95,7 +99,9 @@ type Solicitud struct {
 	InformacionGeneralPropuesta InformacionGeneralPropuestaDTO `json:"informacion_general_propuesta"`
 	TiemposTecnicosPropuestos   *TiemposTecnicosPropuestosDTO  `json:"tiempos_tecnicos_propuestos,omitempty"`
 	AdicionalesPropuestos       *[]AdicionalPropuestoDTO       `json:"adicionales_propuestos,omitempty"`
-	Estado                      string                         `json:"estado"` // "Pendiente de revisión"
+	Estado                      string                         `json:"estado"` // "Pendiente de revisión" o "Retirada por el cliente"
+	// FechaRetiro (RFC 3339) solo existe si el cliente retiró la solicitud.
+	FechaRetiro string `json:"fecha_retiro,omitempty"`
 	// FechaCreacion se genera en formato RFC 3339 con offset de zona horaria explícito (time.RFC3339).
 	// El frontend convierte el instante a America/Lima y mantiene compatibilidad con registros legacy ("YYYY-MM-DD HH:MM:SS").
 	FechaCreacion   string       `json:"fecha_creacion"`
