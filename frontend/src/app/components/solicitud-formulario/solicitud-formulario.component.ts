@@ -1,10 +1,15 @@
-import { Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { debounceTime, distinctUntilChanged, map } from 'rxjs';
 import {
   AdicionalCatalogo,
   AdicionalItem,
+  ConsultaDisponibilidadPayload,
+  EstadoDisponibilidad,
   Evento,
   SolicitudCreacionPayload,
+  TiemposTecnicosPropuestos,
   formatSoles,
   sonAdicionalesIguales,
 } from '../../models/gestor-eventos.models';
@@ -379,6 +384,17 @@ import { SelectorFechaHoraDirective } from '../../directives/selector-fecha-hora
               * Horario regular de funcionamiento del auditorio: 06:00 a 22:00. Evento, montaje y
               desmontaje deben ocurrir el mismo día.
             </p>
+            @if (avisoDisponibilidad; as aviso) {
+              @if (aviso.disponible) {
+                <div class="aviso aviso-ok aviso-disponibilidad" id="avisoDisponibilidad" role="status">
+                  <strong>Horario disponible.</strong> El auditorio está libre en la fecha y el horario propuestos.
+                </div>
+              } @else {
+                <div class="aviso aviso-alerta aviso-disponibilidad" id="avisoDisponibilidad" role="status">
+                  <strong>Horario no disponible.</strong> {{ aviso.mensaje }}
+                </div>
+              }
+            }
           </div>
 
           <!-- Bloque 3: Tiempos Técnicos Adicionales -->
@@ -1751,6 +1767,10 @@ import { SelectorFechaHoraDirective } from '../../directives/selector-fecha-hora
         gap: 10px;
         flex-wrap: wrap;
       }
+
+      .aviso-disponibilidad {
+        margin: 12px 0 0;
+      }
     `,
   ],
 })
@@ -1886,7 +1906,11 @@ export class SolicitudFormularioComponent {
   @Input() mensajeExito = '';
   @Input() avisoRefrescoPosterior = '';
   @Input() errorEnvio = '';
+  /** Última consulta de disponibilidad hecha por el contenedor (se muestra solo si es del evento actual). */
+  @Input() disponibilidad: EstadoDisponibilidad | null = null;
 
+  /** Horario propuesto (válido y distinto al del evento) para consultar su disponibilidad; `null` = nada que consultar. */
+  @Output() consultarDisponibilidad = new EventEmitter<ConsultaDisponibilidadPayload | null>();
   @Output() continuarRevision = new EventEmitter<SolicitudCreacionPayload>();
   @Output() enviarSolicitud = new EventEmitter<SolicitudCreacionPayload>();
   @Output() solicitarVolver = new EventEmitter<boolean>();
@@ -1927,6 +1951,100 @@ export class SolicitudFormularioComponent {
       validators: [solicitudGrupoValidator(() => this.eventoActual, () => this.formAdicionales())],
     }
   );
+
+  private readonly destroyRef = inject(DestroyRef);
+
+  constructor() {
+    // Consulta previa de disponibilidad: espera a que el usuario deje de escribir y no repite la misma consulta
+    this.formulario.valueChanges
+      .pipe(
+        debounceTime(500),
+        map(() => this.payloadDeDisponibilidad()),
+        distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((payload) => this.consultarDisponibilidad.emit(payload));
+  }
+
+  /** La consulta de disponibilidad solo se muestra si corresponde al evento que se está editando. */
+  get avisoDisponibilidad(): EstadoDisponibilidad | null {
+    const d = this.disponibilidad;
+    return d && this.eventoActual && d.evento_id === this.eventoActual.id ? d : null;
+  }
+
+  /**
+   * Arma la consulta de disponibilidad, o `null` si no procede: sin evento, con solicitud pendiente, con algún campo
+   * de horario inválido o cuando el horario (y los tiempos técnicos) no cambian respecto al evento.
+   */
+  private payloadDeDisponibilidad(): ConsultaDisponibilidadPayload | null {
+    const evento = this.eventoActual;
+    if (!evento || this.tienePendiente) {
+      return null;
+    }
+    const v = this.formulario.getRawValue();
+    const controles = ['fecha_propuesta', 'hora_inicio_propuesta', 'hora_fin_propuesta'];
+    if (v.has_montaje) controles.push('montaje_fecha', 'montaje_hora_inicio', 'montaje_hora_fin');
+    if (v.has_desmontaje) controles.push('desmontaje_fecha', 'desmontaje_hora_inicio', 'desmontaje_hora_fin');
+    if (v.has_ensayo) controles.push('ensayo_fecha', 'ensayo_hora_inicio', 'ensayo_hora_fin');
+    if (controles.some((nombre) => this.formulario.get(nombre)?.invalid)) {
+      return null;
+    }
+
+    const fecha = (v.fecha_propuesta ?? '').trim();
+    const horaInicio = (v.hora_inicio_propuesta ?? '').trim();
+    const horaFin = (v.hora_fin_propuesta ?? '').trim();
+    const tiempos = this.armarTiemposTecnicos(v);
+
+    const mismaFranja = (
+      activo: boolean,
+      fechaProp: string,
+      iniProp: string,
+      finProp: string,
+      activoEv: boolean | undefined,
+      fechaEv: string | undefined,
+      iniEv: string | undefined,
+      finEv: string | undefined
+    ) => activo === Boolean(activoEv) && (!activo || (fechaProp === (fechaEv ?? '') && iniProp === (iniEv ?? '') && finProp === (finEv ?? '')));
+    const sinCambios =
+      fecha === evento.fecha &&
+      horaInicio === evento.hora_inicio &&
+      horaFin === evento.hora_fin &&
+      mismaFranja(tiempos.has_montaje, tiempos.montaje_fecha, tiempos.montaje_hora_inicio, tiempos.montaje_hora_fin, evento.has_montaje, evento.montaje_fecha, evento.montaje_hora_inicio, evento.montaje_hora_fin) &&
+      mismaFranja(tiempos.has_desmontaje, tiempos.desmontaje_fecha, tiempos.desmontaje_hora_inicio, tiempos.desmontaje_hora_fin, evento.has_desmontaje, evento.desmontaje_fecha, evento.desmontaje_hora_inicio, evento.desmontaje_hora_fin) &&
+      mismaFranja(tiempos.has_ensayo, tiempos.ensayo_fecha, tiempos.ensayo_hora_inicio, tiempos.ensayo_hora_fin, evento.has_ensayo, evento.ensayo_fecha, evento.ensayo_hora_inicio, evento.ensayo_hora_fin);
+    if (sinCambios) {
+      return null;
+    }
+
+    return {
+      evento_id: evento.id,
+      fecha_propuesta: fecha,
+      hora_inicio_propuesta: horaInicio,
+      hora_fin_propuesta: horaFin,
+      tiempos_tecnicos_propuestos: tiempos,
+    };
+  }
+
+  /** Tiempos técnicos tal como se envían: las franjas desactivadas van vacías. */
+  private armarTiemposTecnicos(valores: ReturnType<typeof this.formulario.getRawValue>): TiemposTecnicosPropuestos {
+    const hasMontaje = Boolean(valores.has_montaje);
+    const hasDesmontaje = Boolean(valores.has_desmontaje);
+    const hasEnsayo = Boolean(valores.has_ensayo);
+    return {
+      has_montaje: hasMontaje,
+      montaje_fecha: hasMontaje ? (valores.montaje_fecha ?? '').trim() : '',
+      montaje_hora_inicio: hasMontaje ? (valores.montaje_hora_inicio ?? '').trim() : '',
+      montaje_hora_fin: hasMontaje ? (valores.montaje_hora_fin ?? '').trim() : '',
+      has_desmontaje: hasDesmontaje,
+      desmontaje_fecha: hasDesmontaje ? (valores.desmontaje_fecha ?? '').trim() : '',
+      desmontaje_hora_inicio: hasDesmontaje ? (valores.desmontaje_hora_inicio ?? '').trim() : '',
+      desmontaje_hora_fin: hasDesmontaje ? (valores.desmontaje_hora_fin ?? '').trim() : '',
+      has_ensayo: hasEnsayo,
+      ensayo_fecha: hasEnsayo ? (valores.ensayo_fecha ?? '').trim() : '',
+      ensayo_hora_inicio: hasEnsayo ? (valores.ensayo_hora_inicio ?? '').trim() : '',
+      ensayo_hora_fin: hasEnsayo ? (valores.ensayo_hora_fin ?? '').trim() : '',
+    };
+  }
 
   private aplicarValoresIniciales(): void {
     if (!this.eventoActual) {
@@ -2651,20 +2769,7 @@ export class SolicitudFormularioComponent {
         correo: (valores.correo_propuesto ?? '').trim(),
         observaciones: (valores.observaciones_propuestas ?? '').trim(),
       },
-      tiempos_tecnicos_propuestos: {
-        has_montaje: hasMontaje,
-        montaje_fecha: hasMontaje ? (valores.montaje_fecha ?? '').trim() : '',
-        montaje_hora_inicio: hasMontaje ? (valores.montaje_hora_inicio ?? '').trim() : '',
-        montaje_hora_fin: hasMontaje ? (valores.montaje_hora_fin ?? '').trim() : '',
-        has_desmontaje: hasDesmontaje,
-        desmontaje_fecha: hasDesmontaje ? (valores.desmontaje_fecha ?? '').trim() : '',
-        desmontaje_hora_inicio: hasDesmontaje ? (valores.desmontaje_hora_inicio ?? '').trim() : '',
-        desmontaje_hora_fin: hasDesmontaje ? (valores.desmontaje_hora_fin ?? '').trim() : '',
-        has_ensayo: hasEnsayo,
-        ensayo_fecha: hasEnsayo ? (valores.ensayo_fecha ?? '').trim() : '',
-        ensayo_hora_inicio: hasEnsayo ? (valores.ensayo_hora_inicio ?? '').trim() : '',
-        ensayo_hora_fin: hasEnsayo ? (valores.ensayo_hora_fin ?? '').trim() : '',
-      },
+      tiempos_tecnicos_propuestos: this.armarTiemposTecnicos(valores),
       adicionales_propuestos: this.formAdicionales().map((a) => ({
         id: a.id,
         cantidad: a.cantidad,

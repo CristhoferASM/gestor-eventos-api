@@ -5,8 +5,10 @@ import {
   AdicionalCatalogo,
   ApiErrorRespuesta,
   ClienteConEventos,
+  ConsultaDisponibilidadPayload,
   CrearSolicitudRespuesta,
   Evento,
+  RespuestaDisponibilidad,
   RetirarSolicitudRespuesta,
   Solicitud,
   SolicitudCreacionPayload,
@@ -38,6 +40,11 @@ export class EventosApiService {
 
   crearSolicitud(payload: SolicitudCreacionPayload): Observable<CrearSolicitudRespuesta> {
     return this.http.post<CrearSolicitudRespuesta>(`${this.baseUrl}/solicitudes`, payload);
+  }
+
+  /** Consulta orientativa: ¿está libre el horario propuesto? No registra nada; al enviar la solicitud se vuelve a comprobar. */
+  consultarDisponibilidad(payload: ConsultaDisponibilidadPayload): Observable<RespuestaDisponibilidad> {
+    return this.http.post<RespuestaDisponibilidad>(`${this.baseUrl}/disponibilidad`, payload);
   }
 
   /** Solo asesor: clientes a los que se puede vincular una cuenta. */

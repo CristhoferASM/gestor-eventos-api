@@ -304,6 +304,19 @@ $solicitudValida = @{
 Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/solicitudes" -Method Post -Body $solicitudValida -ContentType "application/json" | ConvertTo-Json -Depth 5
 ```
 
+### 4b. Consultar si un horario está libre, sin registrar nada (`POST /disponibilidad`)
+Recibe el mismo cuerpo que `POST /solicitudes`, pero el motivo es opcional (el formulario lo usa mientras el cliente aún escribe). Aplica las mismas validaciones y la misma regla de disponibilidad (el bloque de montaje/ensayo a desmontaje no se cruza con otras reservas ni bloqueos; tocarse en el borde es válido), sin guardar nada.
+```powershell
+$consulta = @{
+    evento_id             = 2
+    fecha_propuesta       = "2026-11-15"
+    hora_inicio_propuesta = "13:30"
+    hora_fin_propuesta    = "14:30"
+} | ConvertTo-Json
+Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/disponibilidad" -Method Post -Body $consulta -ContentType "application/json"
+```
+Respuestas: `200` con `{"disponible": true}` o `{"disponible": false, "mensaje": "..."}` (el mensaje nunca revela datos de otros eventos), `400` si los datos son inválidos, `401` sin sesión y `404` si el evento no existe o es de otro cliente. Es orientativa: al enviar la solicitud se vuelve a comprobar.
+
 ### 5. Consultar solicitudes registradas (`GET /solicitudes`)
 ```powershell
 Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/solicitudes" -Method Get | ConvertTo-Json -Depth 5

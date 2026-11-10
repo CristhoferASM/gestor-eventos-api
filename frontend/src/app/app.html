@@ -155,6 +155,8 @@
           [mensajeExito]="mensajeExito()"
           [avisoRefrescoPosterior]="avisoRefrescoPosterior()"
           [errorEnvio]="errorEnvio()"
+          [disponibilidad]="disponibilidad()"
+          (consultarDisponibilidad)="alConsultarDisponibilidad($event)"
           (continuarRevision)="alContinuarARevision($event)"
           (solicitarVolver)="alIntentarVolverAEventosDesdePaso2()"
           (solicitarDescartar)="alIntentarDescartarEnPaso2()"

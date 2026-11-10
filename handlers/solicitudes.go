@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -54,6 +55,37 @@ func CrearSolicitudHandler(solicitudService *services.SolicitudService) gin.Hand
 			"mensaje":   "Solicitud registrada exitosamente.",
 			"solicitud": creada,
 		})
+	}
+}
+
+// ConsultarDisponibilidadHandler responde si el horario propuesto está libre, sin registrar nada (POST /disponibilidad).
+// Recibe el mismo cuerpo que POST /solicitudes, pero el motivo es opcional. Siempre responde 200 con
+// {"disponible": true|false, "mensaje": "..."}; los datos mal formados responden 400 y un evento ajeno, 404.
+func ConsultarDisponibilidadHandler(solicitudService *services.SolicitudService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var dto models.SolicitudCreacionDTO
+		// No se usa ShouldBindJSON: exigiría el motivo, que la consulta no necesita. El servicio valida el resto.
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+		if err := json.NewDecoder(c.Request.Body).Decode(&dto); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Cuerpo de solicitud inválido (se esperan evento_id, fecha_propuesta, hora_inicio_propuesta y hora_fin_propuesta).",
+			})
+			return
+		}
+
+		err := solicitudService.ConsultarDisponibilidadDe(c.Request.Context(), usuarioActual(c), dto)
+		switch {
+		case err == nil:
+			c.JSON(http.StatusOK, gin.H{"disponible": true})
+		case errors.Is(err, services.ErrSinDisponibilidad):
+			c.JSON(http.StatusOK, gin.H{"disponible": false, "mensaje": err.Error()})
+		case errors.Is(err, services.ErrDatosInvalidos):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, services.ErrEventoNoEncontrado):
+			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("El evento con ID %d no existe.", dto.EventoID)})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error interno del servidor."})
+		}
 	}
 }
 

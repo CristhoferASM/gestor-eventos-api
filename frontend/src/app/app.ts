@@ -11,11 +11,14 @@ import {
   untracked,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Subscription } from 'rxjs';
 import {
   AdicionalCatalogo,
   AdicionalItem,
+  ConsultaDisponibilidadPayload,
   ESTADO_PENDIENTE_REVISION,
   ESTADO_RETIRADA_CLIENTE,
+  EstadoDisponibilidad,
   Evento,
   FilaComparativa,
   ResumenComparativoAdicionales,
@@ -197,6 +200,11 @@ export class App implements OnInit {
   readonly eventoSeleccionado = signal<Evento | null>(null);
 
   readonly borradorPropuesta = signal<SolicitudCreacionPayload | null>(null);
+
+  // Consulta previa de disponibilidad del horario propuesto (orientativa: al enviar se vuelve a comprobar)
+  readonly disponibilidad = signal<EstadoDisponibilidad | null>(null);
+  private consultaDisponibilidad: Subscription | null = null;
+
   readonly solicitudConfirmada = signal<Solicitud | null>(null);
 
   readonly solicitudDetalleModal = signal<Solicitud | null>(null);
@@ -464,6 +472,24 @@ export class App implements OnInit {
     if (!this.eventosConPendienteIds().has(evento.id)) {
       this.cambiarPaso(2);
     }
+  }
+
+  /**
+   * El formulario avisa (con retardo) cuando el horario propuesto cambia y es válido; con `null` indica que no hay
+   * nada que consultar. Una consulta nueva cancela la anterior. Si la consulta falla no se muestra nada: es
+   * orientativa y el servidor vuelve a comprobar la disponibilidad al enviar la solicitud.
+   */
+  alConsultarDisponibilidad(payload: ConsultaDisponibilidadPayload | null): void {
+    this.consultaDisponibilidad?.unsubscribe();
+    this.consultaDisponibilidad = null;
+    if (!payload) {
+      this.disponibilidad.set(null);
+      return;
+    }
+    this.consultaDisponibilidad = this.api.consultarDisponibilidad(payload).subscribe({
+      next: (respuesta) => this.disponibilidad.set({ ...respuesta, evento_id: payload.evento_id }),
+      error: () => this.disponibilidad.set(null),
+    });
   }
 
   alContinuarARevision(payload: SolicitudCreacionPayload): void {
