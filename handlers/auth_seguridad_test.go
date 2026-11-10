@@ -1,7 +1,9 @@
 package handlers_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -151,5 +153,53 @@ func TestLoginBloqueadoRespondeCuatroVeintinueve(t *testing.T) {
 	w := llamar(r, http.MethodPost, "/auth/login", "", gin.H{"correo": "cliente@horizonte.com", "password": "Secreta2026!"})
 	if w.Code != http.StatusTooManyRequests {
 		t.Errorf("tras demasiados fallos esperaba 429, obtuvo %d: %s", w.Code, w.Body)
+	}
+}
+
+// loginDesde envía POST /auth/login como si la petición llegara de la dirección remota indicada.
+func loginDesde(r *gin.Engine, remota, correo, password string, cabeceras map[string]string) *httptest.ResponseRecorder {
+	cuerpo, _ := json.Marshal(gin.H{"correo": correo, "password": password})
+	req, _ := http.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(cuerpo))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range cabeceras {
+		req.Header.Set(k, v)
+	}
+	req.RemoteAddr = remota
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestLoginBloqueaLaIPDeOrigenConDemasiadosFallos(t *testing.T) {
+	r := nuevoRouterConOpciones(t, handlers.Opciones{})
+	for i := 0; i < services.MaxFallosLoginPorIP; i++ {
+		w := loginDesde(r, "198.51.100.7:4000", fmt.Sprintf("fantasma%d@horizonte.com", i), "incorrecta", nil)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("intento %d: esperaba 401, obtuvo %d", i+1, w.Code)
+		}
+	}
+	// Desde esa IP ya no entra nadie, ni con credenciales correctas
+	if w := loginDesde(r, "198.51.100.7:4000", "cliente@horizonte.com", "Secreta2026!", nil); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("la IP bloqueada esperaba 429, obtuvo %d: %s", w.Code, w.Body)
+	}
+	// Otra IP sí entra (el puerto de origen no cuenta: es la misma IP con otro puerto)
+	if w := loginDesde(r, "198.51.100.8:4000", "cliente@horizonte.com", "Secreta2026!", nil); w.Code != http.StatusOK {
+		t.Errorf("otra IP esperaba 200, obtuvo %d: %s", w.Code, w.Body)
+	}
+	if w := loginDesde(r, "198.51.100.7:51234", "cliente@horizonte.com", "Secreta2026!", nil); w.Code != http.StatusTooManyRequests {
+		t.Errorf("la misma IP con otro puerto sigue bloqueada, obtuvo %d", w.Code)
+	}
+}
+
+func TestLoginNoSeLaSaltaFalsificandoXForwardedFor(t *testing.T) {
+	r := nuevoRouterConOpciones(t, handlers.Opciones{})
+	// La petición llega de una IP NO confiable: su cabecera X-Forwarded-For no debe cambiar el origen contado
+	for i := 0; i < services.MaxFallosLoginPorIP; i++ {
+		_ = loginDesde(r, "203.0.113.9:4000", fmt.Sprintf("fantasma%d@horizonte.com", i), "incorrecta",
+			map[string]string{"X-Forwarded-For": fmt.Sprintf("10.0.0.%d", i+1)})
+	}
+	w := loginDesde(r, "203.0.113.9:4000", "cliente@horizonte.com", "Secreta2026!", map[string]string{"X-Forwarded-For": "10.9.9.9"})
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("falsificar X-Forwarded-For no debe evitar el bloqueo de la IP real, obtuvo %d: %s", w.Code, w.Body)
 	}
 }

@@ -35,6 +35,16 @@ const (
 	// BloqueoLogin es cuánto dura el bloqueo tras superar MaxFallosLogin.
 	BloqueoLogin = 15 * time.Minute
 
+	// Límite por dirección IP: cuenta TODAS las contraseñas erróneas que llegan desde una IP, sea cual sea el correo
+	// (frena a quien prueba muchos correos con pocas contraseñas, que el límite por correo no detecta). Es mayor que el
+	// de un correo porque varias personas pueden compartir IP (oficina, red móvil). A diferencia del límite por correo,
+	// un login correcto NO reinicia este contador: así una cuenta propia no sirve para «limpiar» los intentos de ataque.
+	MaxFallosLoginPorIP = 20
+	// VentanaFallosIP es el tiempo durante el que se acumulan los fallos de una misma IP.
+	VentanaFallosIP = 15 * time.Minute
+	// BloqueoIP es cuánto dura el bloqueo de una IP tras superar MaxFallosLoginPorIP.
+	BloqueoIP = 15 * time.Minute
+
 	maxRegistrosFallos = 10000
 )
 
@@ -54,6 +64,56 @@ type registroFallos struct {
 	cuenta         int
 	desde          time.Time
 	bloqueadoHasta time.Time
+}
+
+// limitadorFallos cuenta fallos por clave (un correo o una IP) dentro de una ventana de tiempo y bloquea la clave
+// temporalmente al llegar al máximo. Es seguro para uso concurrente y acota la memoria que usa.
+type limitadorFallos struct {
+	mu        sync.Mutex
+	registros map[string]*registroFallos
+	maximo    int
+	ventana   time.Duration
+	bloqueo   time.Duration
+}
+
+func nuevoLimitadorFallos(maximo int, ventana, bloqueo time.Duration) *limitadorFallos {
+	return &limitadorFallos{registros: make(map[string]*registroFallos), maximo: maximo, ventana: ventana, bloqueo: bloqueo}
+}
+
+// bloqueada informa si la clave está bloqueada en el instante indicado.
+func (l *limitadorFallos) bloqueada(clave string, ahora time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r, ok := l.registros[clave]
+	return ok && ahora.Before(r.bloqueadoHasta)
+}
+
+// registrar cuenta un fallo; al llegar al máximo dentro de la ventana bloquea la clave.
+func (l *limitadorFallos) registrar(clave string, ahora time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.registros) >= maxRegistrosFallos {
+		for k, v := range l.registros {
+			if ahora.After(v.bloqueadoHasta) && ahora.Sub(v.desde) > l.ventana {
+				delete(l.registros, k)
+			}
+		}
+	}
+	r, ok := l.registros[clave]
+	if !ok || ahora.Sub(r.desde) > l.ventana {
+		r = &registroFallos{desde: ahora}
+		l.registros[clave] = r
+	}
+	r.cuenta++
+	if r.cuenta >= l.maximo {
+		r.bloqueadoHasta = ahora.Add(l.bloqueo)
+	}
+}
+
+func (l *limitadorFallos) limpiar(clave string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.registros, clave)
 }
 
 // hashFicticio se compara cuando el correo no existe, para que el tiempo de respuesta no revele qué correos están registrados.
@@ -86,8 +146,8 @@ type AuthService struct {
 	notificador   NotificadorCodigo
 	mostrarCodigo bool // incluir codigo_prueba en la respuesta (solo modo demostración)
 
-	muFallos sync.Mutex
-	fallos   map[string]*registroFallos
+	fallosCorreo *limitadorFallos // contraseñas erróneas por correo (se reinicia con un login correcto)
+	fallosIP     *limitadorFallos // contraseñas erróneas por IP, de cualquier correo (no se reinicia con un login correcto)
 
 	mu sync.Mutex // serializa verificar/reenviar para que el límite de intentos sea exacto
 }
@@ -112,7 +172,8 @@ func NewAuthServiceCompleto(
 		generarCodigo: generarCodigo,
 		generarToken:  generarToken,
 		mostrarCodigo: true,
-		fallos:        make(map[string]*registroFallos),
+		fallosCorreo:  nuevoLimitadorFallos(MaxFallosLogin, VentanaFallosLogin, BloqueoLogin),
+		fallosIP:      nuevoLimitadorFallos(MaxFallosLoginPorIP, VentanaFallosIP, BloqueoIP),
 	}
 }
 
@@ -124,41 +185,25 @@ func (s *AuthService) ConNotificador(n NotificadorCodigo, mostrarCodigoPrueba bo
 	return s
 }
 
-// bloqueado informa si el correo está bloqueado por intentos fallidos de contraseña.
-func (s *AuthService) bloqueado(correo string) bool {
-	s.muFallos.Lock()
-	defer s.muFallos.Unlock()
-	r, ok := s.fallos[correo]
-	return ok && s.clock().Before(r.bloqueadoHasta)
-}
-
-// registrarFallo cuenta un fallo de contraseña (exista o no el correo, para no revelar cuáles existen).
-func (s *AuthService) registrarFallo(correo string) {
-	s.muFallos.Lock()
-	defer s.muFallos.Unlock()
+// bloqueado informa si el login está bloqueado por intentos fallidos de contraseña: del correo o de la IP de origen.
+// Una IP vacía (no disponible) no se limita.
+func (s *AuthService) bloqueado(correo, ip string) bool {
 	ahora := s.clock()
-	if len(s.fallos) >= maxRegistrosFallos {
-		for k, v := range s.fallos {
-			if ahora.After(v.bloqueadoHasta) && ahora.Sub(v.desde) > VentanaFallosLogin {
-				delete(s.fallos, k)
-			}
-		}
-	}
-	r, ok := s.fallos[correo]
-	if !ok || ahora.Sub(r.desde) > VentanaFallosLogin {
-		r = &registroFallos{desde: ahora}
-		s.fallos[correo] = r
-	}
-	r.cuenta++
-	if r.cuenta >= MaxFallosLogin {
-		r.bloqueadoHasta = ahora.Add(BloqueoLogin)
+	return s.fallosCorreo.bloqueada(correo, ahora) || (ip != "" && s.fallosIP.bloqueada(ip, ahora))
+}
+
+// registrarFallo cuenta un fallo de contraseña contra el correo (exista o no, para no revelar cuáles existen) y contra la IP.
+func (s *AuthService) registrarFallo(correo, ip string) {
+	ahora := s.clock()
+	s.fallosCorreo.registrar(correo, ahora)
+	if ip != "" {
+		s.fallosIP.registrar(ip, ahora)
 	}
 }
 
+// limpiarFallos reinicia solo el contador del correo; el de la IP sigue su curso (ver MaxFallosLoginPorIP).
 func (s *AuthService) limpiarFallos(correo string) {
-	s.muFallos.Lock()
-	defer s.muFallos.Unlock()
-	delete(s.fallos, correo)
+	s.fallosCorreo.limpiar(correo)
 }
 
 func (s *AuthService) notificar(ctx context.Context, d models.DesafioVerificacion) {
@@ -232,7 +277,8 @@ func (s *AuthService) IniciarLogin(ctx context.Context, dto models.LoginDTO) (mo
 		return models.RespuestaDesafio{}, nuevoErrorValidacion("El correo y la contraseña son obligatorios.")
 	}
 
-	if s.bloqueado(correo) {
+	// Antes de tocar la base de datos o calcular bcrypt: un correo o una IP bloqueados se rechazan de inmediato
+	if s.bloqueado(correo, dto.IP) {
 		return models.RespuestaDesafio{}, ErrLoginBloqueado
 	}
 
@@ -240,13 +286,13 @@ func (s *AuthService) IniciarLogin(ctx context.Context, dto models.LoginDTO) (mo
 	if err != nil {
 		if errors.Is(err, repositories.ErrUsuarioNoEncontrado) {
 			_ = bcrypt.CompareHashAndPassword(obtenerHashFicticio(), []byte(dto.Password))
-			s.registrarFallo(correo)
+			s.registrarFallo(correo, dto.IP)
 			return models.RespuestaDesafio{}, ErrCredencialesInvalidas
 		}
 		return models.RespuestaDesafio{}, err
 	}
 	if bcrypt.CompareHashAndPassword([]byte(usuario.PasswordHash), []byte(dto.Password)) != nil {
-		s.registrarFallo(correo)
+		s.registrarFallo(correo, dto.IP)
 		return models.RespuestaDesafio{}, ErrCredencialesInvalidas
 	}
 	s.limpiarFallos(correo)

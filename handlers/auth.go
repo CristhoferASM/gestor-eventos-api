@@ -97,6 +97,8 @@ func LoginHandler(authService *services.AuthService, opciones Opciones) gin.Hand
 			return
 		}
 		dto.DispositivoID = dispositivoDe(c, opciones.CookieSegura)
+		// ClientIP solo confía en X-Forwarded-For si la petición viene de un proxy confiable (ver SetTrustedProxies)
+		dto.IP = c.ClientIP()
 		resp, err := authService.IniciarLogin(c.Request.Context(), dto)
 		if err != nil {
 			responderErrorAuth(c, err)
