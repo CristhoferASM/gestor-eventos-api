@@ -1232,6 +1232,7 @@
             type="button"
             class="btn btn-primario"
             id="btnCheckAvailability"
+            [disabled]="estadoPresentacionComprobacion() === 'consultando'"
             (click)="comprobarDisponibilidad()"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -1262,10 +1263,25 @@
               </ul>
             </div>
           </div>
+        } @else if (estadoPresentacionComprobacion() === 'consultando') {
+          <div class="aviso aviso-info" id="availabilityFeedback" role="status">
+            <div class="aviso-titulo" id="feedbackTitle">Comprobando disponibilidad…</div>
+            <div id="feedbackMessage">Se está consultando si el auditorio está libre en el horario propuesto.</div>
+          </div>
+        } @else if (estadoPresentacionComprobacion() === 'ocupado') {
+          <div class="aviso aviso-error" id="availabilityFeedback" role="alert">
+            <div class="aviso-titulo" id="feedbackTitle">Horario no disponible</div>
+            <div id="feedbackMessage">{{ resultadoServidor()?.mensaje }}</div>
+          </div>
+        } @else if (estadoPresentacionComprobacion() === 'sin-verificar') {
+          <div class="aviso aviso-alerta" id="availabilityFeedback" role="alert">
+            <div class="aviso-titulo" id="feedbackTitle">No se pudo comprobar la disponibilidad</div>
+            <div id="feedbackMessage">{{ errorConsultaServidor()?.mensaje }} No es posible continuar hasta confirmar que el horario está libre; vuelva a intentarlo.</div>
+          </div>
         } @else if (estadoPresentacionComprobacion() === 'valido') {
-          <div class="aviso aviso-alerta" id="availabilityFeedback">
-            <div class="aviso-titulo" id="feedbackTitle">Horarios coherentes. Disponibilidad pendiente de comprobar</div>
-            <div id="feedbackMessage">Los intervalos de tiempo cumplen con el rango operativo (06:00 a 22:00) y el orden cronológico en el borrador. La comprobación física contra otras reservas concurrentes, bloqueos institucionales y mantenimiento requiere el motor de disponibilidad del backend.</div>
+          <div class="aviso aviso-ok" id="availabilityFeedback" role="status">
+            <div class="aviso-titulo" id="feedbackTitle">Horario disponible</div>
+            <div id="feedbackMessage">El auditorio está libre en la fecha y el horario propuestos, incluidos montaje, ensayo y desmontaje, sin cruces con otras reservas ni bloqueos institucionales. Los intervalos cumplen el rango operativo (06:00 a 22:00) y el orden cronológico.</div>
           </div>
         }
 
