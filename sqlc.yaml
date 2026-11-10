@@ -1,0 +1,15 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    # Las migraciones numeradas son la única fuente del esquema: sqlc las lee en orden.
+    schema: "storage/migraciones"
+    queries: "storage/queries"
+    gen:
+      go:
+        package: "db"
+        out: "storage/db"
+        sql_package: "pgx/v5"
+        overrides:
+          # timestamptz NOT NULL como time.Time (en vez de pgtype.Timestamptz)
+          - db_type: "timestamptz"
+            go_type: "time.Time"

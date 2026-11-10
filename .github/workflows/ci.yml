@@ -30,6 +30,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # El código de storage/db es generado: si alguien cambia un .sql o una migración sin ejecutar `sqlc generate`, falla aquí.
+      # La versión coincide con la que figura en la cabecera de los archivos generados.
+      - name: El código de sqlc está al día
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          git diff --exit-code -- storage/db
       - run: go vet ./...
       - run: go test ./... -count=1
 
