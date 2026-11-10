@@ -118,6 +118,20 @@ export interface SolicitudCreacionPayload {
   adicionales_propuestos?: AdicionalPropuestoDTO[];
 }
 
+/** Cuerpo de POST /disponibilidad: igual que una solicitud, pero el motivo es opcional (aún se está escribiendo). */
+export type ConsultaDisponibilidadPayload = Omit<SolicitudCreacionPayload, 'motivo'> & { motivo?: string };
+
+/** Respuesta de POST /disponibilidad: `mensaje` solo viene cuando el horario no está disponible. */
+export interface RespuestaDisponibilidad {
+  disponible: boolean;
+  mensaje?: string;
+}
+
+/** Última consulta de disponibilidad, atada al evento consultado para no mostrarla en otro evento. */
+export interface EstadoDisponibilidad extends RespuestaDisponibilidad {
+  evento_id: number;
+}
+
 export interface Solicitud {
   id: number;
   evento_id: number;

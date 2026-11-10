@@ -81,3 +81,49 @@ test.describe('Solicitud de modificación (flujo completo del cliente)', () => {
     expect(respuesta.status()).toBe(403);
   });
 });
+
+test.describe('Consulta previa de disponibilidad en el formulario', () => {
+  test('avisa si el horario choca o está libre antes de enviar la solicitud, sin revelar datos ajenos', async ({ page }) => {
+    await iniciarSesion(page, 'cliente');
+    await page.locator('.btn-solicitar').click();
+    await expect(page.locator('#eventDate')).toHaveValue('15/11/2026');
+
+    // Sin cambios no hay aviso. Se apagan montaje y desmontaje para proponer solo el evento principal.
+    await expect(page.locator('#avisoDisponibilidad')).toHaveCount(0);
+    await page.locator('#chkMontaje').uncheck();
+    await page.locator('#chkDesmontaje').uncheck();
+
+    // El evento 2 (de otro cliente) ocupa el 20/11/2026 de 14:00 a 18:00
+    await page.locator('#eventDate').fill('20/11/2026');
+    await page.locator('#eventDate').press('Tab');
+    await page.locator('#eventStartTime').fill('14:30');
+    await page.locator('#eventStartTime').press('Tab');
+    await page.locator('#eventEndTime').fill('16:00');
+    await page.locator('#eventEndTime').press('Tab');
+
+    const aviso = page.locator('#avisoDisponibilidad');
+    await expect(aviso).toContainText('Horario no disponible');
+    await expect(aviso).toContainText('ya cuenta con una reserva programada');
+    for (const prohibido of ['Encuentro de docentes', 'Consejo', 'CLI-002', 'Duarte']) {
+      await expect(aviso).not.toContainText(prohibido);
+    }
+
+    // Un horario que solo toca el borde (termina justo cuando empieza el otro evento) está libre
+    await page.locator('#eventStartTime').fill('12:00');
+    await page.locator('#eventStartTime').press('Tab');
+    await page.locator('#eventEndTime').fill('14:00');
+    await page.locator('#eventEndTime').press('Tab');
+    await expect(aviso).toContainText('Horario disponible');
+
+    // Volver al horario original del evento quita el aviso
+    await page.locator('#eventDate').fill('15/11/2026');
+    await page.locator('#eventDate').press('Tab');
+    await page.locator('#eventStartTime').fill('09:00');
+    await page.locator('#eventStartTime').press('Tab');
+    await page.locator('#eventEndTime').fill('13:00');
+    await page.locator('#eventEndTime').press('Tab');
+    await page.locator('#chkMontaje').check();
+    await page.locator('#chkDesmontaje').check();
+    await expect(page.locator('#avisoDisponibilidad')).toHaveCount(0);
+  });
+});

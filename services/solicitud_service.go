@@ -125,6 +125,19 @@ func sonAdicionalesIguales(orig, prop []models.AdicionalItem) bool {
 
 // CrearSolicitud valida las reglas de negocio, construye los snapshots y coordina el registro atómico en el repositorio.
 func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.SolicitudCreacionDTO) (models.Solicitud, error) {
+	nuevaSolicitud, err := s.armarSolicitud(ctx, dto, false)
+	if err != nil {
+		return models.Solicitud{}, err
+	}
+
+	// 11. Coordinar el registro atómico mediante el repositorio
+	return s.solicitudRepo.CrearSolicitud(ctx, nuevaSolicitud)
+}
+
+// armarSolicitud aplica todas las validaciones y construye la solicitud (con sus snapshots) sin guardarla.
+// Con consulta=true sirve para la consulta previa de disponibilidad: no exige el motivo (aún se está escribiendo)
+// ni que haya un cambio efectivo (sin cambios de horario el auditorio sigue disponible); todo lo demás es igual.
+func (s *SolicitudService) armarSolicitud(ctx context.Context, dto models.SolicitudCreacionDTO, consulta bool) (models.Solicitud, error) {
 	if dto.EventoID == 0 {
 		return models.Solicitud{}, nuevoErrorValidacion("El identificador del evento debe ser un número entero positivo.")
 	}
@@ -137,7 +150,7 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 
 	// 2. Validar motivo limpio, no vacío y longitud <= 400 caracteres Unicode
 	motivoLimpio := strings.TrimSpace(dto.Motivo)
-	if motivoLimpio == "" {
+	if motivoLimpio == "" && !consulta {
 		return models.Solicitud{}, nuevoErrorValidacion("El motivo no puede estar vacío.")
 	}
 	if utf8.RuneCountInString(motivoLimpio) > MaxRunasMotivo {
@@ -492,7 +505,7 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 		(hasEnsayoProp != evento.HasEnsayo) ||
 		(hasEnsayoProp && (ensayoFechaProp != evento.EnsayoFecha || ensayoHoraInicioProp != evento.EnsayoHoraInicio || ensayoHoraFinProp != evento.EnsayoHoraFin))
 
-	if !hayCambioHorario && !hayCambioInfoGeneral && !hayCambioTiemposTecnicos && !hayCambioAdicionales {
+	if !consulta && !hayCambioHorario && !hayCambioInfoGeneral && !hayCambioTiemposTecnicos && !hayCambioAdicionales {
 		return models.Solicitud{}, nuevoErrorValidacion("La solicitud debe proponer al menos un cambio efectivo en la información general, contacto, fecha, horario, tiempos técnicos o adicionales respecto al evento original.")
 	}
 
@@ -590,13 +603,18 @@ func (s *SolicitudService) CrearSolicitud(ctx context.Context, dto models.Solici
 		}
 	}
 
-	// 11. Coordinar el registro atómico mediante el repositorio
-	creada, err := s.solicitudRepo.CrearSolicitud(ctx, nuevaSolicitud)
-	if err != nil {
-		return models.Solicitud{}, err
-	}
+	return nuevaSolicitud, nil
+}
 
-	return creada, nil
+// ConsultarDisponibilidadDe comprueba, sin guardar nada, si el horario propuesto está libre. Devuelve nil si lo está,
+// *ErrorDisponibilidad (ErrSinDisponibilidad) si choca, y los mismos errores de validación que CrearSolicitud.
+// Un evento ajeno se trata como inexistente. Es una consulta orientativa: al enviar la solicitud se vuelve a comprobar.
+func (s *SolicitudService) ConsultarDisponibilidadDe(ctx context.Context, u models.Usuario, dto models.SolicitudCreacionDTO) error {
+	if err := s.verificarAccesoEvento(ctx, u, dto.EventoID); err != nil {
+		return err
+	}
+	_, err := s.armarSolicitud(ctx, dto, true)
+	return err
 }
 
 // ConBloqueos habilita la comprobación de bloqueos institucionales al registrar solicitudes.
@@ -620,16 +638,26 @@ func (s *SolicitudService) ObtenerSolicitudes(ctx context.Context) ([]models.Sol
 // CrearSolicitudDe registra una solicitud solo si el usuario puede ver el evento indicado.
 // Un evento ajeno se trata como inexistente (ErrEventoNoEncontrado).
 func (s *SolicitudService) CrearSolicitudDe(ctx context.Context, u models.Usuario, dto models.SolicitudCreacionDTO) (models.Solicitud, error) {
-	if dto.EventoID != 0 {
-		evento, err := s.eventoRepo.ObtenerEventoPorID(ctx, dto.EventoID)
-		if err != nil {
-			return models.Solicitud{}, err
-		}
-		if !puedeVerEvento(u, evento) {
-			return models.Solicitud{}, ErrEventoNoEncontrado
-		}
+	if err := s.verificarAccesoEvento(ctx, u, dto.EventoID); err != nil {
+		return models.Solicitud{}, err
 	}
 	return s.CrearSolicitud(ctx, dto)
+}
+
+// verificarAccesoEvento exige que el evento exista y que el usuario pueda verlo (si el id es 0, la validación
+// normal del servicio responde después con el error de datos inválidos).
+func (s *SolicitudService) verificarAccesoEvento(ctx context.Context, u models.Usuario, eventoID uint) error {
+	if eventoID == 0 {
+		return nil
+	}
+	evento, err := s.eventoRepo.ObtenerEventoPorID(ctx, eventoID)
+	if err != nil {
+		return err
+	}
+	if !puedeVerEvento(u, evento) {
+		return ErrEventoNoEncontrado
+	}
+	return nil
 }
 
 // ObtenerSolicitudesDe retorna solo las solicitudes de eventos que el usuario puede ver.
