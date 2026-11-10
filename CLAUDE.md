@@ -23,7 +23,7 @@ Frontend (`frontend/`, inicia primero el backend):
 - Servidor de desarrollo: `npm start` (http://localhost:4200, redirige `/api` → `http://127.0.0.1:8081` mediante `proxy.conf.json`, que además elimina el prefijo `/api` antes de reenviar)
 - Compilar: `npm run build`
 - Pruebas: `npx ng test --watch=false`
-- Extremo a extremo: `npm run e2e` (Playwright con el Chrome instalado; arranca por sí solo un backend en `:8082` y el frontend en `:4300` con `proxy.e2e.conf.json`, sin tocar los servidores de desarrollo). Incluye auditoría de accesibilidad (axe-core, WCAG 2.1 A/AA) y revisión de desbordes en móvil. El workflow `.github/workflows/ci.yml` corre todo en cada push (aún no se ha ejecutado en GitHub).
+- Extremo a extremo: `npm run e2e` (Playwright con el Chrome instalado; arranca por sí solo un backend en `:8082` y el frontend en `:4300` con `proxy.e2e.conf.json`, sin tocar los servidores de desarrollo). Incluye auditoría de accesibilidad (axe-core, WCAG 2.1 A/AA) y revisión de desbordes en móvil. El workflow `.github/workflows/ci.yml` corre todo en cada push y en cada pull request (ya se ejecutó en GitHub con éxito); además comprueba que `storage/db` esté al día con `sqlc generate`.
 
 ## Arquitectura
 
@@ -98,7 +98,7 @@ Aplican en el backend (`services`) y, duplicadas, en el formulario Angular:
 
 - Reglas reales de adicionales (catálogo y tarifas definitivos; hoy son simulados).
 - PostgreSQL: copias de seguridad/despliegue, y que `fecha`/`hora` pasen a tipos `DATE`/`TIME` (hoy son texto, igual que el JSON de la API).
-- Autenticación: recuperación de contraseña, envío real del código por correo (hoy solo existe el notificador de consola) y persistencia de usuarios y sesiones. Falta también limitar intentos por IP (hoy el límite es por correo) y ejecutar el CI en GitHub.
+- Autenticación: recuperación de contraseña, envío real del código por correo (hoy solo existe el notificador de consola) y persistencia de usuarios y sesiones. Falta también limitar intentos por IP (hoy el límite es por correo).
 - Aprobación y rechazo de solicitudes por el asesor, y retiro por parte del asesor (la vista del asesor existe solo en modo consulta/comparación). El retiro por el cliente ya existe.
 - Registro de acciones e historial para el asesor.
 - Notificación al cliente tras la validación del asesor y confirmación final del cliente (constancia de ambas partes).
