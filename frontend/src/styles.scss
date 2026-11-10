@@ -98,7 +98,7 @@ select {
 
 .aviso-ok {
   background: #dcf3e7;
-  color: var(--ok);
+  color: #17744a; /* verde oscurecido para texto sobre fondo verde claro (contraste WCAG AA) */
   border: 1px solid #a3e0c0;
 }
 

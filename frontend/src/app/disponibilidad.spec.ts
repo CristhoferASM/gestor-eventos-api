@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { App } from './app';
+import { AsesorPortalComponent } from './components/asesor-portal/asesor-portal.component';
 import { SolicitudFormularioComponent } from './components/solicitud-formulario/solicitud-formulario.component';
 import { ConsultaDisponibilidadPayload, Evento } from './models/gestor-eventos.models';
 
@@ -194,5 +195,103 @@ describe('App: consulta previa de disponibilidad', () => {
     http.expectOne('/api/disponibilidad').flush({ error: 'Error interno del servidor.' }, { status: 500, statusText: 'Server Error' });
     expect(app.disponibilidad()).toBeNull();
     http.verify();
+  });
+});
+
+describe('Portal del asesor: comprobación de disponibilidad contra el servidor', () => {
+  function montarAsesor() {
+    sessionStorage.clear();
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(AsesorPortalComponent);
+    fixture.detectChanges();
+    http.expectOne('/api/eventos').flush([EVENTO]);
+    http.expectOne('/api/solicitudes').flush([]);
+    http.expectOne('/api/adicionales').flush([]);
+    const comp = fixture.componentInstance;
+    comp.cargarEvento(EVENTO);
+    comp.irPaso(3);
+    fixture.detectChanges();
+    return { fixture, comp, http, el: fixture.nativeElement as HTMLElement };
+  }
+
+  afterEach(() => sessionStorage.clear());
+
+  it('envía el horario del borrador con sus tiempos técnicos y habilita el Paso 4 solo si está libre', () => {
+    const { fixture, comp, http } = montarAsesor();
+    comp.actualizarCampoBorrador('hora_inicio', '10:00');
+    comp.comprobarDisponibilidad();
+
+    const req = http.expectOne('/api/disponibilidad');
+    expect(req.request.body.evento_id).toBe(1);
+    expect(req.request.body.fecha_propuesta).toBe('2026-11-15');
+    expect(req.request.body.hora_inicio_propuesta).toBe('10:00');
+    expect(req.request.body.hora_fin_propuesta).toBe('13:00');
+    expect(req.request.body.motivo).toBeUndefined();
+    expect(req.request.body.tiempos_tecnicos_propuestos.has_montaje).toBe(true);
+    expect(req.request.body.tiempos_tecnicos_propuestos.desmontaje_hora_fin).toBe('14:00');
+    expect(req.request.body.tiempos_tecnicos_propuestos.has_ensayo).toBe(false);
+    expect(req.request.body.tiempos_tecnicos_propuestos.ensayo_hora_inicio).toBe('');
+    req.flush({ disponible: true });
+    fixture.detectChanges();
+
+    expect(comp.estadoPresentacionComprobacion()).toBe('valido');
+    expect(comp.comprobacionValidaVigente()).toBe(true);
+  });
+
+  it('si el servidor dice que no está disponible muestra el motivo y mantiene bloqueado el Paso 4', () => {
+    const { fixture, comp, http, el } = montarAsesor();
+    comp.comprobarDisponibilidad();
+    http.expectOne('/api/disponibilidad').flush({ disponible: false, mensaje: 'El auditorio ya cuenta con una reserva programada en este horario.' });
+    fixture.detectChanges();
+
+    expect(comp.estadoPresentacionComprobacion()).toBe('ocupado');
+    expect(comp.comprobacionValidaVigente()).toBe(false);
+    const aviso = el.querySelector('#s3 #availabilityFeedback');
+    expect(aviso?.classList.contains('aviso-error')).toBe(true);
+    expect(aviso?.getAttribute('role')).toBe('alert');
+    expect(aviso?.textContent).toContain('Horario no disponible');
+    expect(aviso?.textContent).toContain('ya cuenta con una reserva programada');
+    expect((el.querySelector('#btnContinuarPaso4') as HTMLButtonElement).disabled).toBe(true);
+    comp.irPaso(4);
+    expect(comp.pasoActual()).toBe(3);
+  });
+
+  it('si la consulta falla no da el horario por válido y permite reintentar', () => {
+    const { fixture, comp, http, el } = montarAsesor();
+    comp.comprobarDisponibilidad();
+    http.expectOne('/api/disponibilidad').flush({ error: 'Error interno del servidor.' }, { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+
+    expect(comp.estadoPresentacionComprobacion()).toBe('sin-verificar');
+    expect(comp.comprobacionValidaVigente()).toBe(false);
+    expect(el.querySelector('#s3 #availabilityFeedback')?.textContent).toContain('No se pudo comprobar la disponibilidad');
+    expect((el.querySelector('#btnCheckAvailability') as HTMLButtonElement).disabled).toBe(false);
+
+    comp.comprobarDisponibilidad(); // reintento
+    http.expectOne('/api/disponibilidad').flush({ disponible: true });
+    expect(comp.estadoPresentacionComprobacion()).toBe('valido');
+  });
+
+  it('editar el horario mientras se consulta descarta la respuesta: no queda como válido', () => {
+    const { fixture, comp, http } = montarAsesor();
+    comp.comprobarDisponibilidad();
+    const req = http.expectOne('/api/disponibilidad');
+    expect(comp.estadoPresentacionComprobacion()).toBe('consultando');
+
+    comp.actualizarCampoBorrador('hora_fin', '12:00'); // el asesor cambia el horario
+    expect(req.cancelled).toBe(true);
+    fixture.detectChanges();
+    expect(comp.estadoPresentacionComprobacion()).toBe('pendiente');
+    expect(comp.comprobacionValidaVigente()).toBe(false);
+  });
+
+  it('con inconsistencias locales no consulta al servidor', () => {
+    const { comp, http } = montarAsesor();
+    comp.actualizarCampoBorrador('hora_inicio', '14:00');
+    comp.actualizarCampoBorrador('hora_fin', '12:00');
+    comp.comprobarDisponibilidad();
+    http.expectNone('/api/disponibilidad');
+    expect(comp.estadoPresentacionComprobacion()).toBe('invalido');
   });
 });
