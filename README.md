@@ -238,7 +238,7 @@ npx ng test --watch=false
 | `FIREBASE_PROJECT_ID` | Proyecto de Firebase que valida el acceso con Google | `showtech-prototipo` |
 
 - La sesión viaja en una cookie `HttpOnly` + `SameSite=Strict`: el JavaScript de la página no puede leerla.
-- Tras 5 contraseñas erróneas, el correo se bloquea 15 minutos.
+- Tras 5 contraseñas erróneas, el correo se bloquea 15 minutos. Además, tras 20 contraseñas erróneas desde una misma IP (de cualquier correo) esa IP se bloquea 15 minutos; un login correcto no reinicia el contador de la IP. Ambos casos responden `429`. Los contadores viven en memoria.
 - Al asesor se le pide el código de verificación una vez por día de Lima y por navegador; la contraseña siempre.
 - Una solicitud que choca con otra reserva o con un bloqueo institucional se rechaza (409) sin revelar datos de otros clientes.
 

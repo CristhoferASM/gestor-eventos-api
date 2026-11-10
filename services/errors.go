@@ -74,7 +74,7 @@ var (
 	// ErrSolicitudNoPendiente reexporta el error de repositorio cuando la solicitud ya no se puede retirar (HTTP 409).
 	ErrSolicitudNoPendiente = repositories.ErrSolicitudNoPendiente
 
-	// ErrLoginBloqueado indica que el correo acumuló demasiados intentos fallidos de contraseña (HTTP 429).
+	// ErrLoginBloqueado indica que el correo o la IP de origen acumularon demasiados intentos fallidos de contraseña (HTTP 429).
 	ErrLoginBloqueado = errors.New("demasiados intentos fallidos de contraseña; inténtalo de nuevo en unos minutos")
 
 	// ErrSesionInvalida indica un token ausente, desconocido o vencido (HTTP 401).

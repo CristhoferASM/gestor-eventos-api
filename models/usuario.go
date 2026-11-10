@@ -44,6 +44,8 @@ type LoginDTO struct {
 	Password string `json:"password" binding:"required"`
 	// DispositivoID lo completa el servidor desde la cookie del navegador (nunca viene en el JSON).
 	DispositivoID string `json:"-"`
+	// IP la completa el servidor con la dirección del cliente (nunca viene en el JSON); se usa para limitar intentos.
+	IP string `json:"-"`
 }
 
 // VerificarCodigoDTO es el JSON recibido en POST /auth/verificar.
