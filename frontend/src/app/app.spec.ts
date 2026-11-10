@@ -1808,15 +1808,23 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       btnCheck.click();
       fixture.detectChanges();
 
-      // Validación local: NO se presenta como disponibilidad física confirmada ni aviso verde
+      // Mientras el servidor responde: estado neutro, sin aviso verde y con el botón bloqueado
       expect(el.querySelector('#s3 .aviso-ok')).toBeNull();
+      expect(el.querySelector('#s3 #availabilityFeedback')?.textContent).toContain('Comprobando disponibilidad');
+      expect(btnCheck.disabled).toBe(true);
+      const consulta = httpMock.expectOne('/api/disponibilidad');
+      expect(consulta.request.method).toBe('POST');
+      consulta.flush({ disponible: true });
+      fixture.detectChanges();
+
+      // El servidor confirmó que el auditorio está libre
       const feedbackAviso = el.querySelector('#s3 #availabilityFeedback');
       expect(feedbackAviso).toBeTruthy();
-      expect(feedbackAviso?.classList.contains('aviso-alerta')).toBe(true);
-      expect(feedbackAviso?.textContent).toContain('Horarios coherentes. Disponibilidad pendiente de comprobar');
-      expect(feedbackAviso?.textContent).not.toContain('Sin conflictos');
+      expect(feedbackAviso?.classList.contains('aviso-ok')).toBe(true);
+      expect(feedbackAviso?.textContent).toContain('Horario disponible');
+      expect(feedbackAviso?.textContent).not.toContain('Disponibilidad pendiente de comprobar');
 
-      // Se puede avanzar a revisar el borrador sin que signifique disponibilidad confirmada
+      // Ahora sí se puede avanzar a revisar el borrador
       const btnContinuarPaso4 = Array.from(el.querySelectorAll('#s3 .acciones button')).find(
         (b) => b.textContent?.includes('Continuar a revisión del borrador')
       ) as HTMLButtonElement;
@@ -2010,6 +2018,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
 
       // 5. Verificación en Paso 4: Ficha completa del evento (requiere comprobación previa de horarios)
       comp.comprobarDisponibilidad();
+      httpMock.expectOne('/api/disponibilidad').flush({ disponible: true });
       fixture.detectChanges();
       comp.irPaso(4);
       fixture.detectChanges();
@@ -2363,17 +2372,21 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       expect((el.querySelector('#btnContinuarPaso4') as HTMLButtonElement).disabled).toBe(true);
       expect((el.querySelector('#stepBtn4') as HTMLButtonElement).disabled).toBe(true);
 
-      // Pulsar Comprobar
+      // Pulsar Comprobar: hasta que el servidor responda no se da por válido ni se habilita el Paso 4
       comp.comprobarDisponibilidad();
       fixture.detectChanges();
+      expect(comp.estadoPresentacionComprobacion()).toBe('consultando');
+      expect(comp.comprobacionValidaVigente()).toBe(false);
+      expect((el.querySelector('#btnContinuarPaso4') as HTMLButtonElement).disabled).toBe(true);
 
-      // Ahora sí se muestra "Horarios coherentes. Disponibilidad pendiente de comprobar"
+      // El servidor confirma que el auditorio está libre
+      httpMock.expectOne('/api/disponibilidad').flush({ disponible: true });
+      fixture.detectChanges();
       expect(comp.estadoPresentacionComprobacion()).toBe('valido');
       expect(comp.comprobacionValidaVigente()).toBe(true);
       const feedbackDespues = el.querySelector('#s3 #availabilityFeedback');
-      expect(feedbackDespues?.classList.contains('aviso-alerta')).toBe(true);
-      expect(feedbackDespues?.textContent).toContain('Horarios coherentes. Disponibilidad pendiente de comprobar');
-      expect(feedbackDespues?.textContent).not.toContain('Sin conflictos');
+      expect(feedbackDespues?.classList.contains('aviso-ok')).toBe(true);
+      expect(feedbackDespues?.textContent).toContain('Horario disponible');
 
       // Habilita avanzar a revisión del borrador
       const btnContinuarPaso4 = el.querySelector('#btnContinuarPaso4') as HTMLButtonElement;
@@ -2405,6 +2418,7 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       comp.cargarEvento(EVENTO_PRUEBA);
       comp.irPaso(3);
       comp.comprobarDisponibilidad();
+      httpMock.expectOne('/api/disponibilidad').flush({ disponible: true });
       fixture.detectChanges();
       expect(comp.estadoPresentacionComprobacion()).toBe('valido');
       expect(comp.comprobacionValidaVigente()).toBe(true);

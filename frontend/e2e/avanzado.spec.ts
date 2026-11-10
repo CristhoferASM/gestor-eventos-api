@@ -76,3 +76,36 @@ test.describe('Reglas avanzadas (atajo diario, vínculo de cuentas, disponibilid
     expect(bien.headers()['access-control-allow-origin']).not.toBe('*');
   });
 });
+
+test.describe('Portal del asesor: comprobar disponibilidad contra el servidor', () => {
+  test('confirma un horario libre y avisa de un choque con otra reserva antes de continuar', async ({ page }) => {
+    await iniciarSesion(page, 'asesor');
+    await page.getByRole('button', { name: /Continuar con este evento/ }).click();
+    await page.locator('#btnIrValidarPaso3').click();
+
+    // Sin cambios, el evento 1 está libre: el servidor lo confirma y se habilita el Paso 4
+    await page.locator('#btnCheckAvailability').click();
+    await expect(page.locator('#availabilityFeedback')).toContainText('Horario disponible');
+    await expect(page.locator('#btnContinuarPaso4')).toBeEnabled();
+
+    // Se mueve al 20/11/2026 y el desmontaje se alarga hasta las 15:00: se cruza con el evento 2 (14:00 a 18:00)
+    await page.getByRole('button', { name: '← Modificar datos' }).click();
+    await page.locator('#eventDate').fill('20/11/2026');
+    await page.locator('#eventDate').press('Tab');
+    await page.locator('#desmontajeEndTime').fill('15:00');
+    await page.locator('#desmontajeEndTime').press('Tab');
+    await page.locator('#btnIrValidarPaso3').click();
+
+    // El resultado anterior ya no aplica: hay que volver a comprobar y el Paso 4 sigue bloqueado
+    await expect(page.locator('#availabilityFeedback')).toHaveCount(0);
+    await expect(page.locator('#btnContinuarPaso4')).toBeDisabled();
+    await page.locator('#btnCheckAvailability').click();
+    const aviso = page.locator('#availabilityFeedback');
+    await expect(aviso).toContainText('Horario no disponible');
+    await expect(aviso).toContainText('ya cuenta con una reserva programada');
+    for (const prohibido of ['Encuentro de docentes', 'Consejo', 'CLI-002', 'Duarte']) {
+      await expect(aviso).not.toContainText(prohibido);
+    }
+    await expect(page.locator('#btnContinuarPaso4')).toBeDisabled();
+  });
+});

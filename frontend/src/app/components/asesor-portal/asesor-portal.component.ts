@@ -7,11 +7,13 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import {
   AdicionalCatalogo,
   ESTADO_RETIRADA_CLIENTE,
   AdicionalItem,
   BorradorAsesor,
+  ConsultaDisponibilidadPayload,
   Evento,
   FilaComparativa,
   FilaComparativaAdicional,
@@ -88,6 +90,13 @@ export class AsesorPortalComponent implements OnInit {
   readonly huellaComprobadaExito = signal<string | null>(null);
   readonly huellaComprobadaFallo = signal<string | null>(null);
 
+  // Consulta al backend (POST /disponibilidad) contra otras reservas y bloqueos institucionales.
+  // Cada resultado va atado a la «huella» del horario consultado: si el asesor edita, deja de aplicar.
+  readonly huellaConsultando = signal<string | null>(null);
+  readonly resultadoServidor = signal<{ huella: string; disponible: boolean; mensaje: string } | null>(null);
+  readonly errorConsultaServidor = signal<{ huella: string; mensaje: string } | null>(null);
+  private consultaDisponibilidad: Subscription | null = null;
+
   readonly validacionHorariosActual = computed<ResultadoValidacionHorarios>(() => {
     return validarCoherenciaHorarios(this.borrador());
   });
@@ -124,7 +133,14 @@ export class AsesorPortalComponent implements OnInit {
     );
   });
 
-  readonly estadoPresentacionComprobacion = computed<'pendiente' | 'valido' | 'invalido'>(() => {
+  /**
+   * pendiente: aún no se comprobó este horario · consultando: esperando al servidor · valido: el servidor confirmó que
+   * está libre · invalido: inconsistencias locales (rango, orden, franjas) · ocupado: choca con otra reserva o bloqueo ·
+   * sin-verificar: no se pudo consultar al servidor (no se da por válido).
+   */
+  readonly estadoPresentacionComprobacion = computed<
+    'pendiente' | 'consultando' | 'valido' | 'invalido' | 'ocupado' | 'sin-verificar'
+  >(() => {
     const huella = this.huellaHorarioActual();
     if (!huella) return 'pendiente';
     if (this.huellaComprobadaExito() === huella && this.validacionHorariosActual().esValido) {
@@ -133,6 +149,10 @@ export class AsesorPortalComponent implements OnInit {
     if (this.huellaComprobadaFallo() === huella && !this.validacionHorariosActual().esValido) {
       return 'invalido';
     }
+    if (this.huellaConsultando() === huella) return 'consultando';
+    const resultado = this.resultadoServidor();
+    if (resultado && resultado.huella === huella && !resultado.disponible) return 'ocupado';
+    if (this.errorConsultaServidor()?.huella === huella) return 'sin-verificar';
     return 'pendiente';
   });
 
@@ -715,8 +735,11 @@ export class AsesorPortalComponent implements OnInit {
   }
 
   invalidarComprobacionHorarios(): void {
+    this.cancelarConsultaDisponibilidad();
     this.huellaComprobadaExito.set(null);
     this.huellaComprobadaFallo.set(null);
+    this.resultadoServidor.set(null);
+    this.errorConsultaServidor.set(null);
     if (this.pasoActual() === 4) {
       this.pasoActual.set(3);
     }
@@ -945,8 +968,11 @@ export class AsesorPortalComponent implements OnInit {
     if (e) {
       this.borrador.set(crearBorradorAsesorDesdeEvento(e));
     }
+    this.cancelarConsultaDisponibilidad();
     this.huellaComprobadaExito.set(null);
     this.huellaComprobadaFallo.set(null);
+    this.resultadoServidor.set(null);
+    this.errorConsultaServidor.set(null);
     this.modalDescartarAbierto.set(false);
     this.cancelarEdicionAdicional();
     this.irPaso(1);
@@ -957,16 +983,71 @@ export class AsesorPortalComponent implements OnInit {
   }
 
   // Paso 3: Validación de disponibilidad
+  // Primero la coherencia local (rango 06:00–22:00, orden, franjas); si pasa, se consulta al servidor si el auditorio
+  // está libre. Solo la respuesta «disponible» del servidor habilita el Paso 4.
   comprobarDisponibilidad(): void {
+    this.cancelarConsultaDisponibilidad();
     const huella = this.huellaHorarioActual();
     const val = this.validacionHorariosActual();
+    this.huellaComprobadaExito.set(null);
+    this.resultadoServidor.set(null);
+    this.errorConsultaServidor.set(null);
     if (!val.esValido) {
-      this.huellaComprobadaExito.set(null);
       this.huellaComprobadaFallo.set(huella);
       return;
     }
     this.huellaComprobadaFallo.set(null);
-    this.huellaComprobadaExito.set(huella);
+
+    const b = this.borrador();
+    if (!b) return;
+    this.huellaConsultando.set(huella);
+    this.consultaDisponibilidad = this.api.consultarDisponibilidad(this.payloadDisponibilidad(b)).subscribe({
+      next: (respuesta) => {
+        // Si el asesor editó el horario mientras tanto, la respuesta ya no corresponde a lo que ve
+        if (this.huellaHorarioActual() !== huella) return;
+        this.huellaConsultando.set(null);
+        if (respuesta.disponible) {
+          this.huellaComprobadaExito.set(huella);
+        } else {
+          this.resultadoServidor.set({ huella, disponible: false, mensaje: respuesta.mensaje ?? '' });
+        }
+      },
+      error: (err: unknown) => {
+        if (this.huellaHorarioActual() !== huella) return;
+        this.huellaConsultando.set(null);
+        this.errorConsultaServidor.set({ huella, mensaje: this.api.obtenerMensajeError(err, 'carga') });
+      },
+    });
+  }
+
+  /** Cuerpo de POST /disponibilidad a partir del borrador (las franjas técnicas desactivadas van vacías). */
+  private payloadDisponibilidad(b: BorradorAsesor): ConsultaDisponibilidadPayload {
+    return {
+      evento_id: b.evento_id,
+      fecha_propuesta: b.fecha,
+      hora_inicio_propuesta: b.hora_inicio,
+      hora_fin_propuesta: b.hora_fin,
+      tiempos_tecnicos_propuestos: {
+        has_montaje: b.has_montaje,
+        montaje_fecha: b.has_montaje ? b.montaje_fecha : '',
+        montaje_hora_inicio: b.has_montaje ? b.montaje_hora_inicio : '',
+        montaje_hora_fin: b.has_montaje ? b.montaje_hora_fin : '',
+        has_desmontaje: b.has_desmontaje,
+        desmontaje_fecha: b.has_desmontaje ? b.desmontaje_fecha : '',
+        desmontaje_hora_inicio: b.has_desmontaje ? b.desmontaje_hora_inicio : '',
+        desmontaje_hora_fin: b.has_desmontaje ? b.desmontaje_hora_fin : '',
+        has_ensayo: b.has_ensayo,
+        ensayo_fecha: b.has_ensayo ? b.ensayo_fecha : '',
+        ensayo_hora_inicio: b.has_ensayo ? b.ensayo_hora_inicio : '',
+        ensayo_hora_fin: b.has_ensayo ? b.ensayo_hora_fin : '',
+      },
+    };
+  }
+
+  private cancelarConsultaDisponibilidad(): void {
+    this.consultaDisponibilidad?.unsubscribe();
+    this.consultaDisponibilidad = null;
+    this.huellaConsultando.set(null);
   }
 
   enfocarCampoPaso2(campoId?: string | null): void {

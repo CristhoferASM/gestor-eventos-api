@@ -720,7 +720,7 @@
 
   .aviso-ok {
     background: #dcf3e7;
-    color: var(--ok, #0d6832);
+    color: #17744a; /* verde oscurecido para texto sobre fondo verde claro (contraste WCAG AA) */
     border: none;
   }
 
