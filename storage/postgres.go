@@ -28,6 +28,7 @@ var (
 	_ repositories.UsuarioRepository   = (*PostgresStore)(nil)
 	_ repositories.SesionRepository    = (*PostgresStore)(nil)
 	_ repositories.BloqueoRepository   = (*PostgresStore)(nil)
+	_ repositories.ClienteRepository   = (*PostgresStore)(nil)
 )
 
 // Códigos de error de PostgreSQL que traducimos a errores de dominio.
@@ -161,6 +162,14 @@ func (s *PostgresStore) SembrarDemo(ctx context.Context) error {
 		}
 	}
 
+	// Los clientes demo se insertan siempre que falten (también en bases anteriores a la tabla de clientes)
+	clientes, _ := mem.ObtenerClientes(ctx)
+	for _, c := range clientes {
+		if err := s.q.InsertarClienteSiFalta(ctx, db.InsertarClienteSiFaltaParams{ID: c.ID, RazonSocial: c.RazonSocial}); err != nil {
+			return err
+		}
+	}
+
 	usuarios, _ := mem.ObtenerUsuarios(ctx)
 	for _, u := range usuarios {
 		if err := s.q.InsertarUsuarioSiFalta(ctx, db.InsertarUsuarioSiFaltaParams{
@@ -201,6 +210,20 @@ func (s *PostgresStore) ObtenerEventoPorID(ctx context.Context, id uint) (models
 	}
 	var e models.Evento
 	return e, json.Unmarshal(datos, &e)
+}
+
+// ---------------------------------------------------------------- clientes
+
+func (s *PostgresStore) ObtenerClientes(ctx context.Context) ([]models.Cliente, error) {
+	filas, err := s.q.ListarClientes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lista := make([]models.Cliente, 0, len(filas))
+	for _, f := range filas {
+		lista = append(lista, models.Cliente{ID: f.ID, RazonSocial: f.RazonSocial})
+	}
+	return lista, nil
 }
 
 // ---------------------------------------------------------------- bloqueos

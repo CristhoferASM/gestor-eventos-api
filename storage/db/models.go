@@ -14,6 +14,11 @@ type Bloqueo struct {
 	Datos []byte
 }
 
+type Cliente struct {
+	ID          string
+	RazonSocial string
+}
+
 type Desafio struct {
 	IDHash       string
 	Correo       string

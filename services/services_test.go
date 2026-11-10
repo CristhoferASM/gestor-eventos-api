@@ -55,6 +55,57 @@ func (r *repoFalloSimulado) CrearSolicitud(ctx context.Context, sol models.Solic
 	return r.base.CrearSolicitud(ctx, sol)
 }
 
+func TestEventoServiceIncluyeLaRazonSocialDelCliente(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	store.AgregarCliente(models.Cliente{ID: "CLI-003", RazonSocial: "Cliente sin eventos"})
+
+	// Sin repositorio de clientes el evento no trae nombre (comportamiento anterior)
+	sinClientes := services.NewEventoService(store)
+	ev, err := sinClientes.ObtenerEventoPorID(ctx, 1)
+	if err != nil || ev.ClienteNombre != "" {
+		t.Fatalf("sin ConClientes no debía haber cliente_nombre: %+v, %v", ev, err)
+	}
+
+	svc := services.NewEventoService(store).ConClientes(store)
+	ev, err = svc.ObtenerEventoPorID(ctx, 1)
+	if err != nil || ev.ClienteNombre != "Promoción Horizonte 2026" {
+		t.Fatalf("evento 1: cliente_nombre inesperado: %+v, %v", ev, err)
+	}
+	lista, err := svc.ObtenerEventos(ctx)
+	if err != nil || len(lista) != 2 || lista[0].ClienteNombre != "Promoción Horizonte 2026" || lista[1].ClienteNombre == "" {
+		t.Fatalf("listado: cliente_nombre inesperado: %+v, %v", lista, err)
+	}
+
+	// El filtrado por rol sigue funcionando con los nombres incluidos
+	propios, _ := svc.ObtenerEventosDe(ctx, models.Usuario{Rol: models.RolCliente, ClienteID: "CLI-001"})
+	if len(propios) != 1 || propios[0].ClienteNombre != "Promoción Horizonte 2026" {
+		t.Errorf("el cliente debía ver solo su evento con su razón social: %+v", propios)
+	}
+
+	// Un cliente sin fila en la tabla (evento con un código desconocido) queda sin nombre, no falla
+	vacio := storage.NewEmptyMemoryStore()
+	sinFila := services.NewEventoService(vacio).ConClientes(vacio)
+	if l, err := sinFila.ObtenerEventos(ctx); err != nil || len(l) != 0 {
+		t.Errorf("almacén vacío: %+v, %v", l, err)
+	}
+}
+
+func TestUsuarioServiceClientesIncluyeRazonSocial(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	asesor := models.Usuario{Rol: models.RolAsesor}
+
+	con, err := services.NewUsuarioService(store, store).ConClientes(store).Clientes(ctx, asesor)
+	if err != nil || len(con) != 2 || con[0].ClienteID != "CLI-001" || con[0].RazonSocial != "Promoción Horizonte 2026" {
+		t.Fatalf("clientes con razón social inesperados: %+v, %v", con, err)
+	}
+	sin, err := services.NewUsuarioService(store, store).Clientes(ctx, asesor)
+	if err != nil || len(sin) != 2 || sin[0].RazonSocial != "" {
+		t.Fatalf("sin ConClientes no debía haber razón social: %+v, %v", sin, err)
+	}
+}
+
 func TestEventoServiceSinHTTP(t *testing.T) {
 	ctx := context.Background()
 	store := storage.NewMemoryStore()

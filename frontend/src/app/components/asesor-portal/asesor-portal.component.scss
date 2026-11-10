@@ -2,6 +2,22 @@
   display: block;
 }
 
+/* Título de la vista: mismas medidas y colores que h1 y .sub de styles.css del prototipo
+   (sin estas reglas el h1 salía con el tamaño por defecto del navegador, 32 px, y casi negro). */
+.encabezado-seccion {
+  h1 {
+    font-size: 22px;
+    color: var(--primario);
+    margin: 0 0 4px;
+  }
+
+  .sub {
+    color: var(--gris);
+    margin: 0 0 20px;
+    font-size: 14px;
+  }
+}
+
 /* ==========================================================================
    FORMULARIO DE MODIFICACIÓN DE DATOS (PASO 2)
    ========================================================================== */

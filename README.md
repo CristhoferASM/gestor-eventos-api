@@ -16,7 +16,8 @@ gestor-eventos-api/
 ├── main.go                       # Punto de entrada: ensambla almacenamiento, servicios y enrutador HTTP
 │
 ├── models/
-│   ├── evento.go                 # Estructura de datos Evento (incluye cliente_id, el dueño del evento)
+│   ├── cliente.go                # Cliente (código y razón social; tabla `clientes`)
+│   ├── evento.go                 # Estructura de datos Evento (incluye cliente_id, el dueño, y cliente_nombre, su razón social)
 │   ├── solicitud.go              # Estructuras Solicitud, SolicitudCreacionDTO y DatosHorario
 │   └── usuario.go                # Usuario, desafío de verificación, sesión y DTOs de autenticación
 │
@@ -340,6 +341,8 @@ $vinculo = @{ correo = "ana@gmail.com"; cliente_id = "CLI-002" } | ConvertTo-Jso
 Invoke-RestMethod -Headers $h -Uri "http://127.0.0.1:8081/usuarios/vincular" -Method Post -Body $vinculo -ContentType "application/json"
 ```
 Respuestas: `403` si no eres asesor, `400` si la cuenta no existe, no es de Google o el cliente no existe.
+
+`GET /clientes` devuelve `cliente_id`, `razon_social` (si el cliente está registrado) y los nombres de sus eventos. Los clientes viven en la tabla `clientes` (migración `002_clientes.sql`, solo código y razón social por ahora; los demás datos del cliente están por confirmar con el ingeniero). `GET /eventos` y `GET /eventos/:id` incluyen `cliente_nombre` con esa razón social; si el cliente aún no está registrado el campo no aparece y la interfaz muestra «No disponible». Con PostgreSQL, los clientes demo (`CLI-001` «Promoción Horizonte 2026», del prototipo, y `CLI-002`, inventado para la demo) se cargan si faltan, sin pisar cambios.
 
 ### 7. Intentar registrar un horario con formato u orden inválido (HTTP 400)
 ```powershell

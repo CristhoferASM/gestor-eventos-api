@@ -47,7 +47,7 @@ import { EventosApiService } from '../../services/eventos-api.service';
               >
                 <option value="">Elige un cliente…</option>
                 @for (cliente of clientes(); track cliente.cliente_id) {
-                  <option [value]="cliente.cliente_id">{{ cliente.cliente_id }} — {{ cliente.eventos.join(', ') }}</option>
+                  <option [value]="cliente.cliente_id">{{ cliente.cliente_id }} — {{ cliente.razon_social ? cliente.razon_social + ' — ' : '' }}{{ cliente.eventos.join(', ') }}</option>
                 }
               </select>
               <button

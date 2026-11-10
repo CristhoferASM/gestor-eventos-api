@@ -27,6 +27,11 @@ type EventoRepository interface {
 	ObtenerEventoPorID(ctx context.Context, id uint) (models.Evento, error)
 }
 
+// ClienteRepository define la consulta de los clientes registrados (ordenados por id).
+type ClienteRepository interface {
+	ObtenerClientes(ctx context.Context) ([]models.Cliente, error)
+}
+
 // BloqueoRepository define la consulta de bloqueos institucionales del auditorio.
 type BloqueoRepository interface {
 	ObtenerBloqueos(ctx context.Context) ([]models.BloqueoInstitucional, error)

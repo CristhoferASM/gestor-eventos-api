@@ -1592,6 +1592,20 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
       httpMock.expectNone('/api/eventos');
     });
 
+    it('Paso 1: muestra la razón social del cliente en la tabla y las tarjetas cuando la API la envía', () => {
+      const fixture = TestBed.createComponent(AsesorPortalComponent);
+      fixture.detectChanges();
+
+      httpMock.expectOne('/api/eventos').flush([{ ...EVENTO_PRUEBA, cliente_nombre: 'Promoción Horizonte 2026' }]);
+      httpMock.expectOne('/api/solicitudes').flush([SOLICITUD_PRUEBA]);
+      httpMock.expectOne('/api/adicionales').flush(CATALOGO_PRUEBA);
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('#s1 tbody tr .col-cliente')?.textContent?.trim()).toBe('Promoción Horizonte 2026');
+      expect(el.querySelector('.tarjeta-evento-cliente')?.textContent).toContain('Promoción Horizonte 2026');
+    });
+
     it('Paso 1: muestra la tabla de eventos con sus columnas y la bandeja de solicitudes de 6 columnas', () => {
       const fixture = TestBed.createComponent(AsesorPortalComponent);
       const comp = fixture.componentInstance;
