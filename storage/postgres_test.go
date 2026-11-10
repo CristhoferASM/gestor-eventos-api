@@ -118,6 +118,45 @@ func TestPGMigracionesSonIdempotentesYSembrarNoDuplicaNiPisa(t *testing.T) {
 	}
 }
 
+func TestPGClientesDemoSeSiembranSinDuplicarNiPisar(t *testing.T) {
+	s, url := nuevoPG(t)
+	ctx := context.Background()
+
+	if clientes, err := s.ObtenerClientes(ctx); err != nil || len(clientes) != 0 {
+		t.Fatalf("antes de sembrar no debía haber clientes: %+v, %v", clientes, err)
+	}
+	if err := s.SembrarDemo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	clientes, err := s.ObtenerClientes(ctx)
+	if err != nil || len(clientes) != 2 || clientes[0].ID != "CLI-001" || clientes[0].RazonSocial != "Promoción Horizonte 2026" || clientes[1].ID != "CLI-002" {
+		t.Fatalf("clientes demo inesperados: %+v, %v", clientes, err)
+	}
+
+	// Sembrar otra vez no duplica ni pisa un nombre corregido a mano
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	if _, err := conn.Exec(ctx, `UPDATE clientes SET razon_social = 'Nombre corregido' WHERE id = 'CLI-001'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SembrarDemo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	clientes, _ = s.ObtenerClientes(ctx)
+	if len(clientes) != 2 || clientes[0].RazonSocial != "Nombre corregido" {
+		t.Errorf("sembrar de nuevo no debe duplicar ni pisar: %+v", clientes)
+	}
+
+	// Los servicios completan cliente_nombre sobre PostgreSQL
+	ev, err := services.NewEventoService(s).ConClientes(s).ObtenerEventoPorID(ctx, 1)
+	if err != nil || ev.ClienteNombre != "Nombre corregido" {
+		t.Errorf("cliente_nombre sobre PostgreSQL: %+v, %v", ev, err)
+	}
+}
+
 func TestPGEventosYUsuarios(t *testing.T) {
 	s, _ := nuevoPG(t)
 	ctx := context.Background()

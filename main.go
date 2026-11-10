@@ -45,6 +45,7 @@ type almacen interface {
 	repositories.UsuarioRepository
 	repositories.SesionRepository
 	repositories.BloqueoRepository
+	repositories.ClienteRepository
 }
 
 // abrirAlmacen elige dónde se guardan los datos: PostgreSQL si hay DATABASE_URL; si no, memoria (se pierde al reiniciar).
@@ -79,7 +80,7 @@ func main() {
 	defer cerrarAlmacen()
 
 	// Ensamblar servicios inyectando las interfaces de repositorio
-	eventoService := services.NewEventoService(store)
+	eventoService := services.NewEventoService(store).ConClientes(store)
 	solicitudService := services.NewSolicitudService(store, store).ConBloqueos(store)
 	modoDemo := os.Getenv("MODO_DEMO") != "false" // por defecto true: el código se muestra en la respuesta
 	authService := services.NewAuthService(store, store).
@@ -90,7 +91,7 @@ func main() {
 	r := handlers.SetupRouter(eventoService, solicitudService, authService, handlers.Opciones{
 		OrigenesCORS: listaDeEntorno("CORS_ORIGINS"),
 		CookieSegura: os.Getenv("COOKIE_SECURE") == "true",
-		Usuarios:     services.NewUsuarioService(store, store),
+		Usuarios:     services.NewUsuarioService(store, store).ConClientes(store),
 	})
 
 	direccion := "127.0.0.1:8081"

@@ -14,10 +14,17 @@ import (
 type UsuarioService struct {
 	usuarios   repositories.UsuarioRepository
 	eventoRepo repositories.EventoRepository
+	clientes   repositories.ClienteRepository // opcional: completa la razón social al listar clientes
 }
 
 func NewUsuarioService(usuarios repositories.UsuarioRepository, eventoRepo repositories.EventoRepository) *UsuarioService {
 	return &UsuarioService{usuarios: usuarios, eventoRepo: eventoRepo}
+}
+
+// ConClientes habilita que GET /clientes incluya la razón social de cada cliente.
+func (s *UsuarioService) ConClientes(clientes repositories.ClienteRepository) *UsuarioService {
+	s.clientes = clientes
+	return s
 }
 
 func exigirAsesor(u models.Usuario) error {
@@ -49,8 +56,9 @@ func (s *UsuarioService) CuentasPendientesDeVinculo(ctx context.Context, asesor 
 
 // ClienteConEventos resume un cliente conocido a partir de sus eventos.
 type ClienteConEventos struct {
-	ClienteID string   `json:"cliente_id"`
-	Eventos   []string `json:"eventos"` // nombres de sus eventos, para reconocerlo al elegirlo
+	ClienteID   string   `json:"cliente_id"`
+	RazonSocial string   `json:"razon_social,omitempty"` // vacío si el cliente aún no está en la tabla de clientes
+	Eventos     []string `json:"eventos"`                // nombres de sus eventos, para reconocerlo al elegirlo
 }
 
 // Clientes devuelve los clientes que tienen al menos un evento (los únicos a los que se puede vincular una cuenta).
@@ -68,9 +76,13 @@ func (s *UsuarioService) Clientes(ctx context.Context, asesor models.Usuario) ([
 			porCliente[e.ClienteID] = append(porCliente[e.ClienteID], e.Nombre)
 		}
 	}
+	razones, err := nombresDeClientes(ctx, s.clientes)
+	if err != nil {
+		return nil, err
+	}
 	resultado := make([]ClienteConEventos, 0, len(porCliente))
 	for id, nombres := range porCliente {
-		resultado = append(resultado, ClienteConEventos{ClienteID: id, Eventos: nombres})
+		resultado = append(resultado, ClienteConEventos{ClienteID: id, RazonSocial: razones[id], Eventos: nombres})
 	}
 	sort.Slice(resultado, func(i, j int) bool { return resultado[i].ClienteID < resultado[j].ClienteID })
 	return resultado, nil

@@ -4,6 +4,9 @@ package models
 type Evento struct {
 	ID            uint   `json:"id"`
 	ClienteID     string `json:"cliente_id"` // Dueño del evento (ej. "CLI-001"); define qué cliente puede verlo
+	// ClienteNombre es la razón social del cliente. No se guarda con el evento: EventoService la completa al consultar
+	// a partir de la tabla de clientes (vacío si el cliente aún no está registrado allí).
+	ClienteNombre string `json:"cliente_nombre,omitempty"`
 	Nombre        string `json:"nombre"`
 	Espacio       string `json:"espacio"`
 	Fecha         string `json:"fecha"`       // Formato YYYY-MM-DD

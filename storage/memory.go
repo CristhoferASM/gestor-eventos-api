@@ -13,6 +13,7 @@ var (
 	_ repositories.EventoRepository    = (*Store)(nil)
 	_ repositories.SolicitudRepository = (*Store)(nil)
 	_ repositories.BloqueoRepository   = (*Store)(nil)
+	_ repositories.ClienteRepository   = (*Store)(nil)
 )
 
 // Store gestiona el almacenamiento en memoria protegido contra accesos concurrentes mediante RWMutex
@@ -22,7 +23,8 @@ type Store struct {
 	solicitudes []models.Solicitud
 	nextSolID   uint
 
-	bloqueos []models.BloqueoInstitucional
+	bloqueos    []models.BloqueoInstitucional
+	clientes    []models.Cliente
 	verifDiaria map[string]string // clave: dispositivo|correo -> día de Lima
 
 	// Autenticación (se inicializan de forma perezosa en auth_memory.go)
@@ -51,6 +53,12 @@ func NewMemoryStore() *Store {
 		Fecha: "2026-11-06", HoraInicio: "14:00", HoraFin: "17:00", Tipo: "Bloqueo institucional",
 		Notas: "Calibración de consolas de audio digital, reflectores y cambio de lámparas.",
 	}}
+
+	// Clientes de demostración: CLI-001 es la razón social del prototipo; el prototipo no define CLI-002
+	s.clientes = []models.Cliente{
+		{ID: "CLI-001", RazonSocial: "Promoción Horizonte 2026"},
+		{ID: "CLI-002", RazonSocial: "Cliente de demostración"},
+	}
 
 	// Dos eventos iniciales de demostración (datos de contacto, observaciones y tiempos técnicos para desarrollo)
 	s.eventos[1] = models.Evento{
@@ -234,6 +242,26 @@ func (s *Store) ObtenerBloqueos(ctx context.Context) ([]models.BloqueoInstitucio
 	copia := make([]models.BloqueoInstitucional, len(s.bloqueos))
 	copy(copia, s.bloqueos)
 	return copia, nil
+}
+
+// ObtenerClientes devuelve una copia de los clientes registrados, ordenados por id.
+func (s *Store) ObtenerClientes(ctx context.Context) ([]models.Cliente, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	copia := make([]models.Cliente, len(s.clientes))
+	copy(copia, s.clientes)
+	sort.Slice(copia, func(i, j int) bool { return copia[i].ID < copia[j].ID })
+	return copia, nil
+}
+
+// AgregarCliente registra un cliente (útil en pruebas).
+func (s *Store) AgregarCliente(c models.Cliente) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clientes = append(s.clientes, c)
 }
 
 // AgregarBloqueo registra un bloqueo institucional (útil en pruebas).

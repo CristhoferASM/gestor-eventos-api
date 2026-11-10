@@ -1,6 +1,7 @@
 export interface Evento {
   id: number;
   cliente_id?: string; // Dueño del evento (ej. "CLI-001")
+  cliente_nombre?: string; // Razón social del cliente; ausente si el cliente aún no está registrado
   nombre: string;
   espacio: string;
   fecha: string;       // Formato YYYY-MM-DD
@@ -1005,5 +1006,6 @@ export interface RetirarSolicitudRespuesta {
 /** Cliente al que se puede vincular una cuenta (GET /clientes, solo asesor). */
 export interface ClienteConEventos {
   cliente_id: string;
+  razon_social?: string; // ausente si el cliente aún no está en la tabla de clientes
   eventos: string[];
 }

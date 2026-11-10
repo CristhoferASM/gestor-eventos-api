@@ -1072,15 +1072,11 @@ export class AsesorPortalComponent implements OnInit {
 
   /**
    * Obtiene el nombre del cliente o razón social del evento.
-   * Documentación: La API backend actual (models.Evento en Go) no incluye un campo 'cliente'
-   * ni 'razon_social', disponiendo únicamente de datos de contacto (persona natural).
-   * Para evitar sustituir indebidamente la razón social con el contacto, se devuelve 'No disponible'
-   * a menos que en el futuro el backend exponga la entidad cliente.
+   * El backend completa `cliente_nombre` (razón social) desde la tabla de clientes. Si el cliente aún no está
+   * registrado allí se devuelve 'No disponible'; nunca se sustituye por el contacto del evento (es otra persona).
    */
   obtenerClienteEvento(evt?: Evento | null): string {
-    if (!evt) return 'No disponible';
-    const entidad = evt as unknown as { cliente?: string; razon_social?: string };
-    const valor = entidad.cliente || entidad.razon_social;
+    const valor = evt?.cliente_nombre;
     return valor && valor.trim() ? valor.trim() : 'No disponible';
   }
 

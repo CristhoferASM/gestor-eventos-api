@@ -30,6 +30,29 @@ func setupVinculoRouter(t *testing.T) (r *gin.Engine, tokAsesor, tokCliente, tok
 	return
 }
 
+func TestEventosYClientesIncluyenLaRazonSocial(t *testing.T) {
+	store := storage.NewMemoryStore()
+	tokAsesor := sesionPara(store, usuarioAsesorPrueba)
+	r := handlers.SetupRouter(
+		services.NewEventoService(store).ConClientes(store), services.NewSolicitudService(store, store), services.NewAuthService(store, store),
+		handlers.Opciones{Usuarios: services.NewUsuarioService(store, store).ConClientes(store)},
+	)
+
+	var eventos []models.Evento
+	if w := llamar(r, http.MethodGet, "/eventos", tokAsesor, nil); w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &eventos) != nil ||
+		len(eventos) != 2 || eventos[0].ClienteNombre != "Promoción Horizonte 2026" {
+		t.Fatalf("GET /eventos debe incluir cliente_nombre: %d %s", w.Code, w.Body)
+	}
+	var evento models.Evento
+	if w := llamar(r, http.MethodGet, "/eventos/1", tokAsesor, nil); w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &evento) != nil ||
+		evento.ClienteNombre != "Promoción Horizonte 2026" {
+		t.Fatalf("GET /eventos/1 debe incluir cliente_nombre: %d %s", w.Code, w.Body)
+	}
+	if w := llamar(r, http.MethodGet, "/clientes", tokAsesor, nil); !strings.Contains(w.Body.String(), `"razon_social":"Promoción Horizonte 2026"`) {
+		t.Errorf("GET /clientes debe incluir razon_social: %s", w.Body)
+	}
+}
+
 func TestVinculoSoloElAsesorPuedeAdministrarlo(t *testing.T) {
 	r, _, tokCliente, tokGoogle := setupVinculoRouter(t)
 	for _, tok := range []string{tokCliente, tokGoogle} {

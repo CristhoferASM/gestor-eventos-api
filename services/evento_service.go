@@ -10,6 +10,29 @@ import (
 // EventoService coordina la lógica de consulta de eventos.
 type EventoService struct {
 	eventoRepo repositories.EventoRepository
+	clientes   repositories.ClienteRepository // opcional: completa Evento.ClienteNombre
+}
+
+// ConClientes habilita que los eventos incluyan la razón social de su cliente (cliente_nombre).
+func (s *EventoService) ConClientes(clientes repositories.ClienteRepository) *EventoService {
+	s.clientes = clientes
+	return s
+}
+
+// nombresDeClientes devuelve la razón social por código de cliente (vacío si no hay repositorio de clientes).
+func nombresDeClientes(ctx context.Context, repo repositories.ClienteRepository) (map[string]string, error) {
+	nombres := map[string]string{}
+	if repo == nil {
+		return nombres, nil
+	}
+	lista, err := repo.ObtenerClientes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range lista {
+		nombres[c.ID] = c.RazonSocial
+	}
+	return nombres, nil
 }
 
 // NewEventoService crea una nueva instancia de EventoService.
@@ -27,6 +50,13 @@ func (s *EventoService) ObtenerEventos(ctx context.Context) ([]models.Evento, er
 	}
 	if eventos == nil {
 		return make([]models.Evento, 0), nil
+	}
+	nombres, err := nombresDeClientes(ctx, s.clientes)
+	if err != nil {
+		return nil, err
+	}
+	for i := range eventos {
+		eventos[i].ClienteNombre = nombres[eventos[i].ClienteID]
 	}
 	return eventos, nil
 }
@@ -77,5 +107,14 @@ func (s *EventoService) ObtenerEventoPorID(ctx context.Context, id uint) (models
 	if id == 0 {
 		return models.Evento{}, nuevoErrorValidacion("El identificador del evento debe ser un número entero positivo.")
 	}
-	return s.eventoRepo.ObtenerEventoPorID(ctx, id)
+	evento, err := s.eventoRepo.ObtenerEventoPorID(ctx, id)
+	if err != nil {
+		return models.Evento{}, err
+	}
+	nombres, err := nombresDeClientes(ctx, s.clientes)
+	if err != nil {
+		return models.Evento{}, err
+	}
+	evento.ClienteNombre = nombres[evento.ClienteID]
+	return evento, nil
 }

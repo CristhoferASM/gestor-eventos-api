@@ -37,6 +37,16 @@ describe('Panel de vinculación de cuentas de Google (asesor)', () => {
     http.verify();
   });
 
+  it('muestra la razón social del cliente cuando la API la envía', () => {
+    const { fixture, http, el } = montarPanel();
+    http.expectOne('/api/clientes').flush([{ cliente_id: 'CLI-001', razon_social: 'Promoción Horizonte 2026', eventos: ['Ceremonia de graduación'] }]);
+    http.expectOne('/api/usuarios/pendientes-de-vinculo').flush([ANA]);
+    fixture.detectChanges();
+
+    expect(el.textContent).toContain('CLI-001 — Promoción Horizonte 2026 — Ceremonia de graduación');
+    http.verify();
+  });
+
   it('vincula con el cliente elegido y quita la cuenta de la lista', () => {
     const { fixture, comp, http, el } = montarPanel();
     http.expectOne('/api/clientes').flush(CLIENTES);
