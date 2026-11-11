@@ -141,6 +141,14 @@ type SolicitudModificacion struct {
 	MotivoResolucion   pgtype.Text
 }
 
+type TarifaEspacio struct {
+	IDTarifa     int32
+	IDEspacio    int16
+	PrecioHora   float64
+	VigenteDesde pgtype.Date
+	VigenteHasta pgtype.Date
+}
+
 type Usuario struct {
 	IDUsuario    int32
 	IDCliente    pgtype.Int4

@@ -2,7 +2,11 @@
 
 -- name: ListarEventos :many
 SELECT e.id_evento, e.codigo, c.codigo AS cliente_codigo, c.nombre_razon_social AS cliente_nombre,
-       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version
+       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version,
+       coalesce((SELECT t.precio_hora FROM tarifa_espacio t
+                  WHERE t.id_espacio = e.id_espacio AND t.vigente_desde <= CURRENT_DATE
+                    AND (t.vigente_hasta IS NULL OR t.vigente_hasta >= CURRENT_DATE)
+                  ORDER BY t.vigente_desde DESC LIMIT 1), 0)::numeric AS tarifa_hora
   FROM evento e
   JOIN solicitud_cotizacion s ON s.id_solicitud = e.id_solicitud
   JOIN cliente c              ON c.id_cliente   = s.id_cliente
@@ -11,7 +15,11 @@ SELECT e.id_evento, e.codigo, c.codigo AS cliente_codigo, c.nombre_razon_social 
 
 -- name: ObtenerEvento :one
 SELECT e.id_evento, e.codigo, c.codigo AS cliente_codigo, c.nombre_razon_social AS cliente_nombre,
-       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version
+       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version,
+       coalesce((SELECT t.precio_hora FROM tarifa_espacio t
+                  WHERE t.id_espacio = e.id_espacio AND t.vigente_desde <= CURRENT_DATE
+                    AND (t.vigente_hasta IS NULL OR t.vigente_hasta >= CURRENT_DATE)
+                  ORDER BY t.vigente_desde DESC LIMIT 1), 0)::numeric AS tarifa_hora
   FROM evento e
   JOIN solicitud_cotizacion s ON s.id_solicitud = e.id_solicitud
   JOIN cliente c              ON c.id_cliente   = s.id_cliente

@@ -131,6 +131,10 @@ func main() {
 	// Ensamblar servicios inyectando las interfaces de repositorio
 	eventoService := services.NewEventoService(store).ConClientes(store).ConCatalogo(store)
 	solicitudService := services.NewSolicitudService(store, store).ConBloqueos(store).ConCatalogo(store)
+	if _, esEmpresa := store.(almacenEmpresa); esEmpresa {
+		// Como en la base de datos de la empresa: solo el cliente envía solicitudes de modificación
+		solicitudService = solicitudService.SoloClientesEnvian()
+	}
 	modoDemo := os.Getenv("MODO_DEMO") != "false" // por defecto true: el código se muestra en la respuesta
 	authService := services.NewAuthService(store, store).
 		ConVerificadorGoogle(googleauth.NuevoVerificador(proyectoFirebase())).

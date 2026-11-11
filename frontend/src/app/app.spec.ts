@@ -309,6 +309,52 @@ describe('Portal del Cliente en 4 pasos (App y SolicitudFormularioComponent)', (
     expect(comp.formulario.get('motivo')?.hasError('maximoUnicode')).toBe(true);
   });
 
+  it('con la base de datos de la empresa, el paso 3 muestra la penalidad por cambio de fecha (1 o 1,5 horas de la tarifa vigente) solo si cambia la fecha', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    fixture.detectChanges();
+
+    const evento: Evento = { ...EVENTO_PRUEBA, tarifa_hora_alquiler: 100 };
+    httpMock.expectOne('/api/adicionales').flush(CATALOGO_PRUEBA);
+    httpMock.expectOne('/api/eventos').flush([evento]);
+    httpMock.expectOne('/api/solicitudes').flush([]);
+    fixture.detectChanges();
+    app.alSeleccionarEvento(evento);
+    fixture.detectChanges();
+
+    const propuesta = (fecha: string) => ({
+      evento_id: 1,
+      motivo: 'Ajuste de la agenda',
+      fecha_propuesta: fecha,
+      hora_inicio_propuesta: evento.hora_inicio,
+      hora_fin_propuesta: evento.hora_fin,
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    // Sin cambio de fecha: no hay penalidad y ya no se muestran las tarifas del prototipo
+    app.alContinuarARevision(propuesta(evento.fecha));
+    fixture.detectChanges();
+    expect(app.propuestaCambiaFecha()).toBe(false);
+    let costos = el.querySelector('.bloque-penalidad-fecha')?.textContent ?? '';
+    expect(costos).toContain('no cambia la fecha del evento');
+    expect(costos).toContain('S/ 100.00 por hora');
+    expect(costos).not.toContain('Penalidad de 1 hora de alquiler');
+    expect(el.querySelector('.bloque-costos-cliente')?.textContent).not.toContain('Cargo por modificación');
+
+    // Con cambio de fecha: penalidad de 1 hora (S/ 100.00) o de 1,5 horas (S/ 150.00)
+    app.alModificarPropuestaDesdeRevision();
+    app.alContinuarARevision(propuesta('2026-11-18'));
+    fixture.detectChanges();
+    expect(app.propuestaCambiaFecha()).toBe(true);
+    costos = el.querySelector('.bloque-penalidad-fecha')?.textContent ?? '';
+    expect(costos).toContain('Penalidad de 1 hora de alquiler');
+    expect(costos).toContain('S/ 100.00');
+    expect(costos).toContain('Penalidad de 1,5 horas de alquiler');
+    expect(costos).toContain('S/ 150.00');
+    expect(costos).toContain('Penalidad pendiente de definir por el asesor');
+    expect(costos).toContain('no genera deudas automáticas');
+  });
+
   it('debe recorrer los pasos 1 -> 2 -> 3 sin enviar POST en el paso 2, mostrar comparativo con "Sin especificar", conservar el borrador al volver y restaurar al descartar', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;

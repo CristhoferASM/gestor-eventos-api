@@ -48,6 +48,8 @@ type SolicitudService struct {
 	clock         ClockFunc
 	bloqueoRepo   repositories.BloqueoRepository
 	catalogoRepo  repositories.AdicionalRepository // opcional: sin él se usa el catálogo simulado
+
+	soloClientesEnvian bool // true: el asesor no puede enviar solicitudes (modelo de la base de datos de la empresa)
 }
 
 // NewSolicitudService crea un SolicitudService utilizando time.Now como reloj por defecto.
@@ -639,6 +641,14 @@ func (s *SolicitudService) ConsultarDisponibilidadDe(ctx context.Context, u mode
 	return err
 }
 
+// SoloClientesEnvian hace que únicamente el rol cliente pueda enviar solicitudes de modificación (el asesor recibe
+// ErrAccesoDenegado), tal como las modela la base de datos de la empresa. Sin esta opción, el asesor también puede crearlas
+// (comportamiento del prototipo, que se conserva con los datos en memoria). La consulta de disponibilidad no cambia.
+func (s *SolicitudService) SoloClientesEnvian() *SolicitudService {
+	s.soloClientesEnvian = true
+	return s
+}
+
 // ConCatalogo hace que los adicionales se validen contra el catálogo del repositorio (por ejemplo, la tabla `adicional`
 // de la base de datos de la empresa). Sin él se usa el catálogo simulado del prototipo.
 func (s *SolicitudService) ConCatalogo(r repositories.AdicionalRepository) *SolicitudService {
@@ -686,6 +696,11 @@ func (s *SolicitudService) ObtenerSolicitudes(ctx context.Context) ([]models.Sol
 func (s *SolicitudService) CrearSolicitudDe(ctx context.Context, u models.Usuario, dto models.SolicitudCreacionDTO) (models.Solicitud, error) {
 	if err := s.verificarAccesoEvento(ctx, u, dto.EventoID); err != nil {
 		return models.Solicitud{}, err
+	}
+	// Como en la base de datos de la empresa: la solicitud la envía el cliente (solicitante_usuario). Un cambio directo
+	// del asesor no es una solicitud sino una modificación aplicada (modificacion_evento, origen ASESOR).
+	if s.soloClientesEnvian && u.Rol != models.RolCliente {
+		return models.Solicitud{}, ErrAccesoDenegado
 	}
 	nueva, err := s.armarSolicitud(ctx, dto, false)
 	if err != nil {

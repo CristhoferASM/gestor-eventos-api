@@ -299,7 +299,11 @@ func (q *Queries) ListarClientes(ctx context.Context) ([]ListarClientesRow, erro
 const listarEventos = `-- name: ListarEventos :many
 
 SELECT e.id_evento, e.codigo, c.codigo AS cliente_codigo, c.nombre_razon_social AS cliente_nombre,
-       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version
+       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version,
+       coalesce((SELECT t.precio_hora FROM tarifa_espacio t
+                  WHERE t.id_espacio = e.id_espacio AND t.vigente_desde <= CURRENT_DATE
+                    AND (t.vigente_hasta IS NULL OR t.vigente_hasta >= CURRENT_DATE)
+                  ORDER BY t.vigente_desde DESC LIMIT 1), 0)::numeric AS tarifa_hora
   FROM evento e
   JOIN solicitud_cotizacion s ON s.id_solicitud = e.id_solicitud
   JOIN cliente c              ON c.id_cliente   = s.id_cliente
@@ -320,6 +324,7 @@ type ListarEventosRow struct {
 	Observaciones pgtype.Text
 	Estado        string
 	Version       int32
+	TarifaHora    float64
 }
 
 // ============================ Eventos ============================
@@ -345,6 +350,7 @@ func (q *Queries) ListarEventos(ctx context.Context) ([]ListarEventosRow, error)
 			&i.Observaciones,
 			&i.Estado,
 			&i.Version,
+			&i.TarifaHora,
 		); err != nil {
 			return nil, err
 		}
@@ -406,7 +412,11 @@ func (q *Queries) ListarUsuariosConRol(ctx context.Context) ([]ListarUsuariosCon
 
 const obtenerEvento = `-- name: ObtenerEvento :one
 SELECT e.id_evento, e.codigo, c.codigo AS cliente_codigo, c.nombre_razon_social AS cliente_nombre,
-       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version
+       esp.nombre AS espacio, e.nombre, e.contacto, e.telefono, e.correo, e.observaciones, e.estado, e.version,
+       coalesce((SELECT t.precio_hora FROM tarifa_espacio t
+                  WHERE t.id_espacio = e.id_espacio AND t.vigente_desde <= CURRENT_DATE
+                    AND (t.vigente_hasta IS NULL OR t.vigente_hasta >= CURRENT_DATE)
+                  ORDER BY t.vigente_desde DESC LIMIT 1), 0)::numeric AS tarifa_hora
   FROM evento e
   JOIN solicitud_cotizacion s ON s.id_solicitud = e.id_solicitud
   JOIN cliente c              ON c.id_cliente   = s.id_cliente
@@ -427,6 +437,7 @@ type ObtenerEventoRow struct {
 	Observaciones pgtype.Text
 	Estado        string
 	Version       int32
+	TarifaHora    float64
 }
 
 func (q *Queries) ObtenerEvento(ctx context.Context, idEvento int32) (ObtenerEventoRow, error) {
@@ -445,6 +456,7 @@ func (q *Queries) ObtenerEvento(ctx context.Context, idEvento int32) (ObtenerEve
 		&i.Observaciones,
 		&i.Estado,
 		&i.Version,
+		&i.TarifaHora,
 	)
 	return i, err
 }

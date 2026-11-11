@@ -57,6 +57,10 @@ func borrarSolicitudes(t *testing.T, url string, ids ...uint) {
 
 var asesorPrueba = models.Usuario{ID: 2, Correo: "asesor@ejemplo.pe", Rol: models.RolAsesor}
 
+// clientePrueba es un cliente dueño del evento 3 (CLI-0002). Como en la base de datos de la empresa, la solicitud la envía el
+// cliente: el usuario 3 de la tabla usuario hace de solicitante (solo para la clave foránea; el dueño lo define ClienteID).
+var clientePrueba = models.Usuario{ID: 3, Correo: "contacto@ejemplo.pe", Rol: models.RolCliente, ClienteID: "CLI-0002"}
+
 func TestEmpresaLeeEventosConHorarioYAdicionales(t *testing.T) {
 	s, _ := abrirEmpresa(t)
 	ctx := context.Background()
@@ -191,7 +195,7 @@ func TestEmpresaCuentasDemoSalenDeLaTablaUsuario(t *testing.T) {
 
 // servicioEmpresa arma el servicio de solicitudes sobre la base real, como en main.go.
 func servicioEmpresa(s *storage.EmpresaStore) *services.SolicitudService {
-	return services.NewSolicitudService(s, s).ConBloqueos(s).ConCatalogo(s)
+	return services.NewSolicitudService(s, s).ConBloqueos(s).ConCatalogo(s).SoloClientesEnvian()
 }
 
 // cambioObservaciones es una solicitud sin cambio de horario sobre el evento 3 (no toca la disponibilidad).
@@ -210,7 +214,7 @@ func TestEmpresaCrearYRetirarSolicitudDeModificacion(t *testing.T) {
 	ctx := context.Background()
 	svc := servicioEmpresa(s)
 
-	creada, err := svc.CrearSolicitudDe(ctx, asesorPrueba, cambioObservaciones("Observación de prueba"))
+	creada, err := svc.CrearSolicitudDe(ctx, clientePrueba, cambioObservaciones("Observación de prueba"))
 	if errors.Is(err, services.ErrSolicitudPendienteDuplicada) {
 		t.Skip("el evento 3 ya tiene una solicitud pendiente de otra persona: se omite para no interferir")
 	}
@@ -222,7 +226,7 @@ func TestEmpresaCrearYRetirarSolicitudDeModificacion(t *testing.T) {
 	if ok, _ := regexp.MatchString(`^SOLM-\d{4}-\d{4}$`, creada.Codigo); !ok {
 		t.Errorf("código inesperado: %q", creada.Codigo)
 	}
-	if creada.Estado != models.EstadoPendienteRevision || creada.EventoID != 3 || creada.SolicitanteID != asesorPrueba.ID {
+	if creada.Estado != models.EstadoPendienteRevision || creada.EventoID != 3 || creada.SolicitanteID != clientePrueba.ID {
 		t.Errorf("solicitud creada: %+v", creada)
 	}
 	// Los snapshots quedan en evento_version: el original es el evento actual y la propuesta lleva el cambio
@@ -245,7 +249,7 @@ func TestEmpresaCrearYRetirarSolicitudDeModificacion(t *testing.T) {
 	}
 
 	// Una segunda solicitud pendiente sobre el mismo evento la rechaza la base (índice único parcial)
-	if _, err := svc.CrearSolicitudDe(ctx, asesorPrueba, cambioObservaciones("otra")); !errors.Is(err, services.ErrSolicitudPendienteDuplicada) {
+	if _, err := svc.CrearSolicitudDe(ctx, clientePrueba, cambioObservaciones("otra")); !errors.Is(err, services.ErrSolicitudPendienteDuplicada) {
 		t.Errorf("segunda pendiente: se esperaba ErrSolicitudPendienteDuplicada, se obtuvo %v", err)
 	}
 
@@ -264,7 +268,7 @@ func TestEmpresaCrearYRetirarSolicitudDeModificacion(t *testing.T) {
 		t.Errorf("retiro inexistente: %v", err)
 	}
 	// Libera el evento: ahora se puede enviar otra pendiente
-	otra, err := svc.CrearSolicitudDe(ctx, asesorPrueba, cambioObservaciones("tras el retiro"))
+	otra, err := svc.CrearSolicitudDe(ctx, clientePrueba, cambioObservaciones("tras el retiro"))
 	if err != nil {
 		t.Fatalf("tras retirar debía poder crearse otra: %v", err)
 	}
@@ -277,7 +281,7 @@ func TestEmpresaSolicitudesSimultaneasSoloUnaPendiente(t *testing.T) {
 	svc := servicioEmpresa(s)
 
 	// Si hay una pendiente ajena, la prueba no tiene sentido
-	if previa, err := svc.CrearSolicitudDe(ctx, asesorPrueba, cambioObservaciones("sonda")); errors.Is(err, services.ErrSolicitudPendienteDuplicada) {
+	if previa, err := svc.CrearSolicitudDe(ctx, clientePrueba, cambioObservaciones("sonda")); errors.Is(err, services.ErrSolicitudPendienteDuplicada) {
 		t.Skip("el evento 3 ya tiene una solicitud pendiente de otra persona")
 	} else if err != nil {
 		t.Fatal(err)
@@ -297,7 +301,7 @@ func TestEmpresaSolicitudesSimultaneasSoloUnaPendiente(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sol, err := svc.CrearSolicitudDe(ctx, asesorPrueba, cambioObservaciones("simultánea"))
+			sol, err := svc.CrearSolicitudDe(ctx, clientePrueba, cambioObservaciones("simultánea"))
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -329,7 +333,7 @@ func TestEmpresaCambioDeHorarioGuardaElCronogramaPropuesto(t *testing.T) {
 	dto.TiemposTecnicosPropuestos = &models.TiemposTecnicosPropuestosDTO{
 		HasMontaje: true, MontajeFecha: "2026-12-06", MontajeHoraInicio: "13:00", MontajeHoraFin: "17:00",
 	}
-	creada, err := svc.CrearSolicitudDe(ctx, asesorPrueba, dto)
+	creada, err := svc.CrearSolicitudDe(ctx, clientePrueba, dto)
 	if errors.Is(err, services.ErrSolicitudPendienteDuplicada) {
 		t.Skip("el evento 3 ya tiene una solicitud pendiente de otra persona")
 	}
@@ -373,5 +377,43 @@ func TestEmpresaDisponibilidadUsaLosBloqueosYLosEventosReservados(t *testing.T) 
 	dto.HoraInicioPropuesta, dto.HoraFinPropuesta = "18:00", "20:00"
 	if err := svc.ConsultarDisponibilidadDe(ctx, asesorPrueba, dto); err != nil {
 		t.Errorf("un evento solo RESERVADO no debía bloquear el horario: %v", err)
+	}
+}
+
+func TestEmpresaElAsesorNoEnviaSolicitudesPeroSiConsultaDisponibilidad(t *testing.T) {
+	s, _ := abrirEmpresa(t)
+	ctx := context.Background()
+	svc := servicioEmpresa(s)
+
+	// Como en la base: el solicitante es el cliente; el asesor aplica cambios directos (modificacion_evento)
+	if _, err := svc.CrearSolicitudDe(ctx, asesorPrueba, cambioObservaciones("no debe guardarse")); !errors.Is(err, services.ErrAccesoDenegado) {
+		t.Errorf("el asesor no debe enviar solicitudes: %v", err)
+	}
+	if todas, _ := s.ObtenerSolicitudes(ctx); len(todas) > 0 {
+		for _, sol := range todas {
+			if sol.Motivo == cambioObservaciones("").Motivo && sol.SolicitanteID == asesorPrueba.ID {
+				t.Errorf("no debía guardarse nada a nombre del asesor: %+v", sol)
+			}
+		}
+	}
+	// La consulta de disponibilidad (que usa el paso 3 del portal del asesor) sigue permitida
+	dto := cambioObservaciones("")
+	dto.TiemposTecnicosPropuestos = &models.TiemposTecnicosPropuestosDTO{}
+	if err := svc.ConsultarDisponibilidadDe(ctx, asesorPrueba, dto); err != nil && !errors.Is(err, services.ErrSinDisponibilidad) {
+		t.Errorf("el asesor debe poder consultar la disponibilidad: %v", err)
+	}
+}
+
+func TestEmpresaElEventoTraeLaTarifaVigenteDelAuditorio(t *testing.T) {
+	s, _ := abrirEmpresa(t)
+	ev, err := s.ObtenerEventoPorID(context.Background(), 3)
+	if err != nil || ev.TarifaHoraAlquiler != 100 {
+		t.Errorf("la tarifa vigente de los datos de prueba es S/ 100 por hora: %v, %v", ev.TarifaHoraAlquiler, err)
+	}
+	eventos, _ := s.ObtenerEventos(context.Background())
+	for _, e := range eventos {
+		if e.TarifaHoraAlquiler != 100 {
+			t.Errorf("%s: tarifa %v", e.Codigo, e.TarifaHoraAlquiler)
+		}
 	}
 }

@@ -3,6 +3,7 @@ export interface Evento {
   codigo?: string;     // Código en la base de datos de la empresa (ej. "EV-0003"); no existe con los datos en memoria
   cliente_id?: string; // Dueño del evento (ej. "CLI-001")
   cliente_nombre?: string; // Razón social del cliente; ausente si el cliente aún no está registrado
+  tarifa_hora_alquiler?: number; // Tarifa vigente de alquiler por hora (base de datos de la empresa); base de la penalidad por cambio de fecha
   nombre: string;
   espacio: string;
   fecha: string;       // Formato YYYY-MM-DD

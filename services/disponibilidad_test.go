@@ -276,3 +276,35 @@ func TestSolicitudValidaAdicionalesContraElCatalogoDelRepositorio(t *testing.T) 
 		t.Errorf("un adicional que no está en el catálogo del repositorio debía rechazarse: %v", err)
 	}
 }
+
+func TestSoloClientesEnvianSolicitudes(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	asesor := models.Usuario{ID: 2, Rol: models.RolAsesor}
+	cliente := models.Usuario{ID: 3, Rol: models.RolCliente, ClienteID: "CLI-001"} // dueño del evento 1
+	dto := models.SolicitudCreacionDTO{EventoID: 1, Motivo: "Cambio", FechaPropuesta: "2026-11-16", HoraInicioPropuesta: "09:00", HoraFinPropuesta: "13:00"}
+	dto.TiemposTecnicosPropuestos = &models.TiemposTecnicosPropuestosDTO{}
+
+	// Por defecto (datos en memoria) el asesor también puede crearlas: comportamiento del prototipo
+	libre := servicioConBloqueos(store)
+	if sol, err := libre.CrearSolicitudDe(ctx, asesor, dto); err != nil || sol.SolicitanteID != asesor.ID {
+		t.Fatalf("sin la opción el asesor debía poder crearla: %+v, %v", sol, err)
+	}
+
+	// Con la opción (modelo de la base de la empresa) solo el cliente envía; el asesor sigue pudiendo consultar
+	store2 := storage.NewMemoryStore()
+	estricto := services.NewSolicitudService(store2, store2).ConBloqueos(store2).SoloClientesEnvian()
+	if _, err := estricto.CrearSolicitudDe(ctx, asesor, dto); !errors.Is(err, services.ErrAccesoDenegado) {
+		t.Errorf("el asesor no debía poder enviar: %v", err)
+	}
+	if err := estricto.ConsultarDisponibilidadDe(ctx, asesor, dto); err != nil {
+		t.Errorf("el asesor sí puede consultar la disponibilidad: %v", err)
+	}
+	sol, err := estricto.CrearSolicitudDe(ctx, cliente, dto)
+	if err != nil || sol.SolicitanteID != cliente.ID {
+		t.Errorf("el cliente dueño debía poder enviarla a su nombre: %+v, %v", sol, err)
+	}
+	if lista, _ := estricto.ObtenerSolicitudes(ctx); len(lista) != 1 {
+		t.Errorf("solo debía guardarse la del cliente: %+v", lista)
+	}
+}

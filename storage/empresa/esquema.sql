@@ -24,6 +24,15 @@ CREATE TABLE espacio (
     estado     varchar(10)  NOT NULL
 );
 
+-- Historial de tarifas de alquiler por hora del auditorio (no hay dos vigentes a la vez).
+CREATE TABLE tarifa_espacio (
+    id_tarifa     integer PRIMARY KEY,
+    id_espacio    smallint NOT NULL REFERENCES espacio (id_espacio),
+    precio_hora   numeric  NOT NULL,
+    vigente_desde date     NOT NULL,
+    vigente_hasta date
+);
+
 CREATE TABLE solicitud_cotizacion (
     id_solicitud integer PRIMARY KEY,
     codigo       varchar(20) NOT NULL,

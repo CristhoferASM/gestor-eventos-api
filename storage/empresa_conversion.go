@@ -171,6 +171,8 @@ func eventoDeFilas(f empresadb.ListarEventosRow, bloques []bloqueHorario, ocupa 
 		Observaciones:  texto(f.Observaciones),
 		NoOcupaHorario: !ocupa,
 		Adicionales:    adicionalesAItems(adicionales),
+
+		TarifaHoraAlquiler: f.TarifaHora,
 	}
 	var d models.DatosHorario
 	aplicarBloques(&d, bloques)
