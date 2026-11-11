@@ -4,6 +4,38 @@ Este repositorio contiene el backend en desarrollo para el **Gestor de Eventos d
 
 Actualmente el proyecto opera con almacenamiento en memoria protegido por exclusión mutua (`sync.RWMutex`) y estructura sus responsabilidades en capas (`handlers`, `services`, `repositories` y `storage`) y puede guardar los datos en **PostgreSQL** (variable `DATABASE_URL`) o, si no se define, en memoria.
 
+El repositorio tiene dos partes: el **backend en Go** (raíz) y el **frontend en Angular + TypeScript** (carpeta `frontend/`).
+
+---
+
+## Requisitos previos
+
+| Herramienta | Versión | Para qué sirve | ¿Obligatoria? |
+|---|---|---|---|
+| **Git** | cualquiera reciente | clonar el repositorio | sí |
+| **Go** | **1.27** (la fija `go.mod`) | compilar y ejecutar el backend y sus pruebas | sí |
+| **Node.js** y **npm** | Node **22** o superior (el CI usa 22) y npm 11 | frontend Angular 22 (TypeScript, SCSS), sus pruebas y la compilación | sí, para el frontend |
+| **Google Chrome** | reciente | pruebas de extremo a extremo (`npm run e2e`); Playwright usa el Chrome instalado y no descarga navegadores | solo para las pruebas E2E |
+| **Docker** | reciente | levantar PostgreSQL local (ver sección B) | opcional |
+| **PostgreSQL** | **16** | guardar los datos de forma permanente; puede ser el contenedor local o uno gestionado, indicado en `DATABASE_URL` | opcional: sin `DATABASE_URL` el backend usa memoria y pierde los datos al reiniciar |
+| **sqlc** | 1.31.1 | regenerar `storage/db/` si cambias `storage/queries/*.sql` o las migraciones: `go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1` | solo si tocas esas consultas (el CI comprueba que el código generado esté al día) |
+
+Sistema probado: Windows 11 con PowerShell (los ejemplos de este documento usan PowerShell). Si `go` no está en el `PATH`, usa la ruta completa: `& "C:\Program Files\Go\bin\go.exe"`.
+
+### Inicio rápido
+
+```powershell
+# 1. Backend (en la raíz del repositorio; escucha en 127.0.0.1:8081, datos en memoria)
+go run .
+
+# 2. Frontend (en otra terminal)
+cd frontend
+npm install
+npm start          # http://localhost:4200
+```
+
+Cuentas de demostración, datos persistentes con PostgreSQL y las pruebas se explican más abajo.
+
 ---
 
 ## 1. Estructura del Proyecto y Función de Cada Paquete
