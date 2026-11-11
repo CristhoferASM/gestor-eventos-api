@@ -4,6 +4,11 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"gestor-eventos-api/handlers"
+	"gestor-eventos-api/models"
+	"gestor-eventos-api/services"
+	"gestor-eventos-api/storage"
 )
 
 func TestSolicitudSinDisponibilidadResponde409ConMensajeSeguro(t *testing.T) {
@@ -81,5 +86,32 @@ func TestConsultarDisponibilidadErroresYPermisos(t *testing.T) {
 	propia["hora_inicio_propuesta"] = "9h"
 	if w := llamar(r, http.MethodPost, "/disponibilidad", tokCli001, propia); w.Code != http.StatusBadRequest {
 		t.Errorf("hora mal formada esperaba 400, obtuvo %d: %s", w.Code, w.Body)
+	}
+}
+
+func TestAsesorRecibe403AlEnviarSolicitudCuandoSoloEnvianClientes(t *testing.T) {
+	store := storage.NewMemoryStore()
+	tokAsesor := sesionPara(store, usuarioAsesorPrueba)
+	tokCliente := sesionPara(store, models.Usuario{ID: 7, Correo: "cli1@prueba.test", Rol: models.RolCliente, ClienteID: "CLI-001"})
+	r := handlers.SetupRouter(
+		services.NewEventoService(store),
+		services.NewSolicitudService(store, store).SoloClientesEnvian(),
+		services.NewAuthService(store, store),
+	)
+	cuerpo := map[string]any{
+		"evento_id": 1, "motivo": "Cambio", "fecha_propuesta": "2026-11-16",
+		"hora_inicio_propuesta": "09:00", "hora_fin_propuesta": "13:00",
+		"tiempos_tecnicos_propuestos": map[string]any{},
+	}
+	w := llamar(r, http.MethodPost, "/solicitudes", tokAsesor, cuerpo)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Solo el cliente dueño del evento") {
+		t.Errorf("el asesor esperaba 403, obtuvo %d: %s", w.Code, w.Body)
+	}
+	if w := llamar(r, http.MethodPost, "/solicitudes", tokCliente, cuerpo); w.Code != http.StatusCreated {
+		t.Errorf("el cliente dueño esperaba 201, obtuvo %d: %s", w.Code, w.Body)
+	}
+	// La consulta de disponibilidad sigue disponible para el asesor
+	if w := llamar(r, http.MethodPost, "/disponibilidad", tokAsesor, cuerpo); w.Code != http.StatusOK {
+		t.Errorf("el asesor debe poder consultar la disponibilidad: %d %s", w.Code, w.Body)
 	}
 }

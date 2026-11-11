@@ -11,12 +11,35 @@ import (
 type EventoService struct {
 	eventoRepo repositories.EventoRepository
 	clientes   repositories.ClienteRepository // opcional: completa Evento.ClienteNombre
+	catalogoRepo repositories.AdicionalRepository // opcional: catálogo de adicionales (si es nil, el simulado)
 }
 
 // ConClientes habilita que los eventos incluyan la razón social de su cliente (cliente_nombre).
 func (s *EventoService) ConClientes(clientes repositories.ClienteRepository) *EventoService {
 	s.clientes = clientes
 	return s
+}
+
+// ConCatalogo hace que el catálogo de adicionales venga del repositorio (la tabla `adicional` de la base de datos de la
+// empresa). Sin él se usa el catálogo simulado del prototipo.
+func (s *EventoService) ConCatalogo(r repositories.AdicionalRepository) *EventoService {
+	s.catalogoRepo = r
+	return s
+}
+
+// ObtenerCatalogo devuelve el catálogo de adicionales disponibles.
+func (s *EventoService) ObtenerCatalogo(ctx context.Context) ([]models.AdicionalCatalogo, error) {
+	if s.catalogoRepo == nil {
+		return models.CatalogoAdicionalesSimulado, nil
+	}
+	lista, err := s.catalogoRepo.ObtenerAdicionales(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if lista == nil {
+		lista = []models.AdicionalCatalogo{}
+	}
+	return lista, nil
 }
 
 // nombresDeClientes devuelve la razón social por código de cliente (vacío si no hay repositorio de clientes).
@@ -51,14 +74,36 @@ func (s *EventoService) ObtenerEventos(ctx context.Context) ([]models.Evento, er
 	if eventos == nil {
 		return make([]models.Evento, 0), nil
 	}
-	nombres, err := nombresDeClientes(ctx, s.clientes)
-	if err != nil {
+	if err := s.completarClientes(ctx, eventos); err != nil {
 		return nil, err
 	}
-	for i := range eventos {
-		eventos[i].ClienteNombre = nombres[eventos[i].ClienteID]
-	}
 	return eventos, nil
+}
+
+// completarClientes agrega la razón social a los eventos que no la traen. Solo consulta los clientes si hace falta:
+// el almacén de la base de datos de la empresa ya la trae en la misma consulta del evento y así se ahorra una ida y
+// vuelta a la base.
+func (s *EventoService) completarClientes(ctx context.Context, eventos []models.Evento) error {
+	falta := false
+	for _, e := range eventos {
+		if e.ClienteID != "" && e.ClienteNombre == "" {
+			falta = true
+			break
+		}
+	}
+	if !falta {
+		return nil
+	}
+	nombres, err := nombresDeClientes(ctx, s.clientes)
+	if err != nil {
+		return err
+	}
+	for i := range eventos {
+		if eventos[i].ClienteNombre == "" {
+			eventos[i].ClienteNombre = nombres[eventos[i].ClienteID]
+		}
+	}
+	return nil
 }
 
 // puedeVerEvento indica si el usuario puede acceder al evento: el asesor ve todos; el cliente solo los suyos.
@@ -111,10 +156,9 @@ func (s *EventoService) ObtenerEventoPorID(ctx context.Context, id uint) (models
 	if err != nil {
 		return models.Evento{}, err
 	}
-	nombres, err := nombresDeClientes(ctx, s.clientes)
-	if err != nil {
+	unico := []models.Evento{evento}
+	if err := s.completarClientes(ctx, unico); err != nil {
 		return models.Evento{}, err
 	}
-	evento.ClienteNombre = nombres[evento.ClienteID]
-	return evento, nil
+	return unico[0], nil
 }

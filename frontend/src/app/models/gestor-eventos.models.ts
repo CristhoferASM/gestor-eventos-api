@@ -1,7 +1,9 @@
 export interface Evento {
   id: number;
+  codigo?: string;     // Código en la base de datos de la empresa (ej. "EV-0003"); no existe con los datos en memoria
   cliente_id?: string; // Dueño del evento (ej. "CLI-001")
   cliente_nombre?: string; // Razón social del cliente; ausente si el cliente aún no está registrado
+  tarifa_hora_alquiler?: number; // Tarifa vigente de alquiler por hora (base de datos de la empresa); base de la penalidad por cambio de fecha
   nombre: string;
   espacio: string;
   fecha: string;       // Formato YYYY-MM-DD
@@ -134,6 +136,7 @@ export interface EstadoDisponibilidad extends RespuestaDisponibilidad {
 
 export interface Solicitud {
   id: number;
+  codigo?: string; // Código en la base de datos de la empresa (ej. "SOLM-2026-0003"); con datos en memoria se calcula
   evento_id: number;
   motivo: string;
   fecha_propuesta: string;
@@ -1006,9 +1009,47 @@ export interface RespuestaSesion {
  * Código legible de una solicitud, como en el prototipo (ej. «SOL-2026-001»).
  * El año sale de fecha_creacion; si no se puede leer, se usa el año actual.
  */
-export function formatearCodigoSolicitud(sol: { id: number; fecha_creacion?: string | null }): string {
+export function formatearCodigoSolicitud(sol: { id: number; codigo?: string | null; fecha_creacion?: string | null }): string {
+  // Con la base de datos de la empresa la solicitud trae su código real (SOLM-AAAA-NNNN)
+  if (sol.codigo && sol.codigo.trim()) {
+    return sol.codigo.trim();
+  }
   const anio = /^(\d{4})-/.exec(String(sol.fecha_creacion ?? '').trim())?.[1] ?? String(new Date().getFullYear());
   return `SOL-${anio}-${String(sol.id).padStart(3, '0')}`;
+}
+
+const ESTADOS_EVENTO_LEGIBLES: Record<string, string> = {
+  CON_SOLICITUD_COTIZACION: 'Con solicitud de cotización',
+  COTIZADO: 'Cotizado',
+  RESERVADO: 'Reservado',
+  CON_ADELANTO: 'Con adelanto',
+  PAGADO: 'Pagado',
+  REALIZADO: 'Realizado',
+  EN_PROCESO_CANCELACION: 'En proceso de cancelación',
+  CANCELADO: 'Cancelado',
+};
+
+/** Texto legible del estado de un evento: la base de la empresa lo envía como CON_ADELANTO, RESERVADO, etc. */
+export function formatearEstadoEvento(estado?: string | null): string {
+  const e = (estado ?? '').trim();
+  return ESTADOS_EVENTO_LEGIBLES[e] ?? e;
+}
+
+/**
+ * Estados de evento que no admiten solicitudes de modificación: este módulo es para eventos contratados (reservados, con
+ * adelanto o pagados). Se duplica a propósito la regla del backend (`estadosSinModificacion`): cambia ambos a la vez.
+ * Regla provisional por confirmar con el ingeniero.
+ */
+const ESTADOS_SIN_MODIFICACION = new Set([
+  'CON_SOLICITUD_COTIZACION',
+  'COTIZADO',
+  'CANCELADO',
+  'EN_PROCESO_CANCELACION',
+  'REALIZADO',
+]);
+
+export function eventoAdmiteModificacion(evento: { estado?: string | null }): boolean {
+  return !ESTADOS_SIN_MODIFICACION.has((evento.estado ?? '').trim());
 }
 
 /** Respuesta de POST /solicitudes/:id/retirar. */

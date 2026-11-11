@@ -88,9 +88,21 @@ const EstadoPendienteRevision = "Pendiente de revisión"
 // La solicitud se conserva íntegra en el historial; solo cambia su estado.
 const EstadoRetiradaCliente = "Retirada por el cliente"
 
+// EstadoAprobada y EstadoRechazada son los estados que la base de datos de la empresa asigna cuando el asesor resuelve
+// una solicitud (el flujo de aprobación aún no está implementado en esta API; solo se muestran si ya existen).
+const (
+	EstadoAprobada  = "Aprobada"
+	EstadoRechazada = "Rechazada"
+)
+
 // Solicitud representa el registro de una solicitud de modificación de evento.
 type Solicitud struct {
-	ID                          uint                           `json:"id"`
+	ID uint `json:"id"`
+	// Codigo es el código visible de la solicitud en la base de datos de la empresa (ej. "SOLM-2026-0002"). Con el
+	// almacén en memoria no existe y el frontend lo calcula como SOL-AAAA-NNN.
+	Codigo string `json:"codigo,omitempty"`
+	// SolicitanteID es el id del usuario que la envía; lo completa el servicio y no viaja en el JSON.
+	SolicitanteID               uint                           `json:"-"`
 	EventoID                    uint                           `json:"evento_id"`
 	Motivo                      string                         `json:"motivo"`
 	FechaPropuesta              string                         `json:"fecha_propuesta"`

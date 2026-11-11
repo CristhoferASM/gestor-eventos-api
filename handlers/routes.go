@@ -66,7 +66,7 @@ func SetupRouter(eventoService *services.EventoService, solicitudService *servic
 	protegidas := r.Group("", RequiereSesion(authService))
 	protegidas.GET("/eventos", ListarEventosHandler(eventoService))
 	protegidas.GET("/eventos/:id", DetalleEventoHandler(eventoService))
-	protegidas.GET("/adicionales", ListarCatalogoAdicionalesHandler())
+	protegidas.GET("/adicionales", ListarCatalogoAdicionalesHandler(eventoService))
 	protegidas.POST("/solicitudes", CrearSolicitudHandler(solicitudService))
 	protegidas.POST("/disponibilidad", ConsultarDisponibilidadHandler(solicitudService))
 	protegidas.GET("/solicitudes", ListarSolicitudesHandler(solicitudService))

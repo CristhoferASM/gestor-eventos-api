@@ -35,7 +35,7 @@ jobs:
       - name: El código de sqlc está al día
         run: |
           go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
-          git diff --exit-code -- storage/db
+          git diff --exit-code -- storage/db storage/empresadb
       - run: go vet ./...
       - run: go test ./... -count=1
 

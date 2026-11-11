@@ -3,7 +3,9 @@ import {
   ESTADO_PENDIENTE_REVISION,
   Evento,
   Solicitud,
+  eventoAdmiteModificacion,
   formatearCodigoSolicitud,
+  formatearEstadoEvento,
 } from '../../models/gestor-eventos.models';
 
 @Component({
@@ -96,7 +98,7 @@ import {
                   <h3 class="evento-titulo">{{ evento.nombre }}</h3>
                 </div>
                 <div class="insignias-evento">
-                  <span class="badge-confirmado insignia-estado">{{ evento.estado }}</span>
+                  <span class="badge-confirmado insignia-estado">{{ formatearEstadoEvento(evento.estado) }}</span>
                   @if (eventoSeleccionadoId === evento.id) {
                     <span class="etiqueta et-evento-activo insignia-seleccionado">Evento seleccionado</span>
                   }
@@ -146,6 +148,15 @@ import {
                       class="btn btn-primario btn-solicitar"
                       disabled
                       title="No se permite registrar otra solicitud mientras exista una pendiente de revisión"
+                    >
+                      Solicitar modificación
+                    </button>
+                  } @else if (!eventoAdmiteModificacion(evento)) {
+                    <button
+                      type="button"
+                      class="btn btn-primario btn-solicitar"
+                      disabled
+                      title="Solo se pueden modificar los eventos contratados (reservados, con adelanto o pagados)"
                     >
                       Solicitar modificación
                     </button>
@@ -351,6 +362,8 @@ export class EventosListaComponent {
   @Output() verificarVinculo = new EventEmitter<void>();
 
   readonly formatearCodigoSolicitud = formatearCodigoSolicitud;
+  readonly formatearEstadoEvento = formatearEstadoEvento;
+  readonly eventoAdmiteModificacion = eventoAdmiteModificacion;
 
   obtenerSolicitudPendiente(eventoId: number): Solicitud | undefined {
     return this.solicitudes.find(

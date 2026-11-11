@@ -93,7 +93,8 @@ func (s *SolicitudService) comprobarDisponibilidad(ctx context.Context, eventoID
 		return err
 	}
 	for _, otro := range eventos {
-		if otro.ID == eventoID || otro.Fecha != propuesta.Fecha {
+		// Un evento que aún no ocupa el auditorio (sin primer pago) no bloquea el horario
+		if otro.ID == eventoID || otro.NoOcupaHorario || otro.Fecha != propuesta.Fecha {
 			continue
 		}
 		if t, ok := bloqueOcupado(datosDeEvento(otro)); ok && propio.solapa(t) {

@@ -1,7 +1,7 @@
 version: "2"
 sql:
+  # 1) Esquema propio del proyecto (almacén PostgreSQL local/Docker). Las migraciones numeradas son su única fuente.
   - engine: "postgresql"
-    # Las migraciones numeradas son la única fuente del esquema: sqlc las lee en orden.
     schema: "storage/migraciones"
     queries: "storage/queries"
     gen:
@@ -13,3 +13,25 @@ sql:
           # timestamptz NOT NULL como time.Time (en vez de pgtype.Timestamptz)
           - db_type: "timestamptz"
             go_type: "time.Time"
+
+  # 2) Base de datos de la empresa en Neon (esquema `showtech`). El DDL de storage/empresa/esquema.sql es SOLO el
+  #    subconjunto de tablas y columnas que usa este módulo, para que sqlc conozca los tipos; la fuente de verdad es
+  #    la base de datos. Las tablas van sin prefijo de esquema porque el usuario backend_showtech tiene
+  #    search_path = showtech, public.
+  - engine: "postgresql"
+    schema: "storage/empresa/esquema.sql"
+    queries: "storage/empresa/queries"
+    gen:
+      go:
+        package: "empresadb"
+        out: "storage/empresadb"
+        sql_package: "pgx/v5"
+        overrides:
+          # Las fechas/horas del esquema son `timestamp` SIN zona horaria (hora local de Lima): se leen como time.Time
+          # con la hora de pared, sin conversión de zona.
+          - db_type: "pg_catalog.timestamp"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.numeric"
+            go_type: "float64"

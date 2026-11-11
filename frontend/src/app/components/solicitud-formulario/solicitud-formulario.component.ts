@@ -11,6 +11,7 @@ import {
   SolicitudCreacionPayload,
   TiemposTecnicosPropuestos,
   formatSoles,
+  formatearEstadoEvento,
   sonAdicionalesIguales,
 } from '../../models/gestor-eventos.models';
 import {
@@ -35,7 +36,7 @@ import { SelectorFechaHoraDirective } from '../../directives/selector-fecha-hora
         <h2 id="titulo-paso-2" tabindex="-1">2. Proponer cambios para el evento</h2>
         @if (eventoActual) {
           <div class="etiqueta et-evento-activo" id="badgeEventoClientePaso2">
-            ID: {{ eventoActual.id }} &bull; {{ eventoActual.estado }}
+            ID: {{ eventoActual.id }} &bull; {{ formatearEstadoEvento(eventoActual.estado) }}
           </div>
         }
       </div>
@@ -1787,6 +1788,7 @@ export class SolicitudFormularioComponent {
   }
 
   readonly formAdicionales = signal<AdicionalItem[]>([]);
+  readonly formatearEstadoEvento = formatearEstadoEvento;
   readonly selAdicionalId = signal<string>('cochera');
   readonly numAdicionalCantidad = signal<number>(1);
   readonly numAdicionalHoras = signal<number>(1);

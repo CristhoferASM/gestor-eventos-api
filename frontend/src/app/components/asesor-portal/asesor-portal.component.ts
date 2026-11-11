@@ -24,6 +24,7 @@ import {
   crearBorradorAsesorDesdeEvento,
   formatSoles,
   formatearCodigoSolicitud,
+  formatearEstadoEvento,
   formatearFechaHoraEnvio,
   formatearFechaVisual,
   formatearTextoObligatorio,
@@ -79,6 +80,7 @@ export class AsesorPortalComponent implements OnInit {
   readonly borrador = signal<BorradorAsesor | null>(null);
 
   // Captura / Edición de Adicionales en Paso 2
+  readonly formatearEstadoEvento = formatearEstadoEvento;
   readonly adicionalSeleccionadoId = signal<string>('cochera');
   readonly adicionalCantidad = signal<number>(1);
   readonly adicionalHoras = signal<number>(1);
@@ -712,7 +714,9 @@ export class AsesorPortalComponent implements OnInit {
     this.api.obtenerCatalogoAdicionales().subscribe({
       next: (cat) => {
         this.catalogoAdicionales.set(cat);
-        if (cat.length > 0 && !this.adicionalSeleccionadoId()) {
+        // Con el catálogo de la base de datos de la empresa los ids son otros (COCHERA, LED_5X4...): si el seleccionado
+        // por defecto no existe, se toma el primero
+        if (cat.length > 0 && !cat.some((c) => c.id === this.adicionalSeleccionadoId())) {
           this.adicionalSeleccionadoId.set(cat[0].id);
         }
       },

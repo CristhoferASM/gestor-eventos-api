@@ -31,6 +31,10 @@ func CrearSolicitudHandler(solicitudService *services.SolicitudService) gin.Hand
 				c.JSON(http.StatusBadRequest, gin.H{
 					"error": err.Error(),
 				})
+			case errors.Is(err, services.ErrAccesoDenegado):
+				c.JSON(http.StatusForbidden, gin.H{
+					"error": "Solo el cliente dueño del evento puede enviar una solicitud de modificación. El asesor aplica los cambios directamente.",
+				})
 			case errors.Is(err, services.ErrEventoNoEncontrado):
 				c.JSON(http.StatusNotFound, gin.H{
 					"error": fmt.Sprintf("El evento con ID %d no existe.", dto.EventoID),

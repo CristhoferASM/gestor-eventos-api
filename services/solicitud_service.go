@@ -21,6 +21,18 @@ const (
 	MaxRunasObservaciones = 300
 )
 
+// estadosSinModificacion son los estados de evento (base de datos de la empresa) que no admiten solicitudes de cambio: este
+// módulo es para eventos contratados (reservados, con adelanto o pagados). Los eventos solo con solicitud de cotización o
+// cotizados todavía se negocian por el flujo de cotización, y los cancelados o ya realizados no cambian.
+// Regla provisional por confirmar con el ingeniero.
+var estadosSinModificacion = map[string]bool{
+	"CON_SOLICITUD_COTIZACION": true,
+	"COTIZADO":                 true,
+	"CANCELADO":                true,
+	"EN_PROCESO_CANCELACION":   true,
+	"REALIZADO":                true,
+}
+
 var patronCorreoBasico = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]{2,}$`)
 
 // ClockFunc define una función proveedora de tiempo para permitir pruebas deterministas de fecha_creacion.
@@ -35,6 +47,9 @@ type SolicitudService struct {
 	solicitudRepo repositories.SolicitudRepository
 	clock         ClockFunc
 	bloqueoRepo   repositories.BloqueoRepository
+	catalogoRepo  repositories.AdicionalRepository // opcional: sin él se usa el catálogo simulado
+
+	soloClientesEnvian bool // true: el asesor no puede enviar solicitudes (modelo de la base de datos de la empresa)
 }
 
 // NewSolicitudService crea un SolicitudService utilizando time.Now como reloj por defecto.
@@ -146,6 +161,11 @@ func (s *SolicitudService) armarSolicitud(ctx context.Context, dto models.Solici
 	evento, err := s.eventoRepo.ObtenerEventoPorID(ctx, dto.EventoID)
 	if err != nil {
 		return models.Solicitud{}, err
+	}
+	// Solo los eventos contratados admiten cambios (estados de la base de datos de la empresa; los datos de demostración
+	// en memoria no usan estos estados). Regla provisional por confirmar con el ingeniero.
+	if estadosSinModificacion[evento.Estado] {
+		return models.Solicitud{}, nuevoErrorValidacion("Este evento no admite solicitudes de modificación en su estado actual: solo se pueden modificar los eventos contratados (reservados, con adelanto o pagados).")
 	}
 
 	// 2. Validar motivo limpio, no vacío y longitud <= 400 caracteres Unicode
@@ -453,12 +473,16 @@ func (s *SolicitudService) armarSolicitud(ctx context.Context, dto models.Solici
 	} else {
 		propAdicionales = make([]models.AdicionalItem, 0, len(*dto.AdicionalesPropuestos))
 		vistos := make(map[string]bool)
+		catalogo, err := s.catalogo(ctx)
+		if err != nil {
+			return models.Solicitud{}, err
+		}
 		for _, adicDTO := range *dto.AdicionalesPropuestos {
 			idLimpio := strings.TrimSpace(adicDTO.ID)
 			if idLimpio == "" {
 				return models.Solicitud{}, nuevoErrorValidacion("El identificador del adicional es obligatorio.")
 			}
-			catItem := models.ObtenerAdicionalCatalogo(idLimpio)
+			catItem := buscarEnCatalogo(catalogo, idLimpio)
 			if catItem == nil {
 				return models.Solicitud{}, nuevoErrorValidacion(fmt.Sprintf("El adicional '%s' no existe en el catálogo de servicios.", idLimpio))
 			}
@@ -617,6 +641,38 @@ func (s *SolicitudService) ConsultarDisponibilidadDe(ctx context.Context, u mode
 	return err
 }
 
+// SoloClientesEnvian hace que únicamente el rol cliente pueda enviar solicitudes de modificación (el asesor recibe
+// ErrAccesoDenegado), tal como las modela la base de datos de la empresa. Sin esta opción, el asesor también puede crearlas
+// (comportamiento del prototipo, que se conserva con los datos en memoria). La consulta de disponibilidad no cambia.
+func (s *SolicitudService) SoloClientesEnvian() *SolicitudService {
+	s.soloClientesEnvian = true
+	return s
+}
+
+// ConCatalogo hace que los adicionales se validen contra el catálogo del repositorio (por ejemplo, la tabla `adicional`
+// de la base de datos de la empresa). Sin él se usa el catálogo simulado del prototipo.
+func (s *SolicitudService) ConCatalogo(r repositories.AdicionalRepository) *SolicitudService {
+	s.catalogoRepo = r
+	return s
+}
+
+func (s *SolicitudService) catalogo(ctx context.Context) ([]models.AdicionalCatalogo, error) {
+	if s.catalogoRepo == nil {
+		return models.CatalogoAdicionalesSimulado, nil
+	}
+	return s.catalogoRepo.ObtenerAdicionales(ctx)
+}
+
+func buscarEnCatalogo(catalogo []models.AdicionalCatalogo, id string) *models.AdicionalCatalogo {
+	for i := range catalogo {
+		if catalogo[i].ID == id {
+			copia := catalogo[i]
+			return &copia
+		}
+	}
+	return nil
+}
+
 // ConBloqueos habilita la comprobación de bloqueos institucionales al registrar solicitudes.
 func (s *SolicitudService) ConBloqueos(r repositories.BloqueoRepository) *SolicitudService {
 	s.bloqueoRepo = r
@@ -641,7 +697,17 @@ func (s *SolicitudService) CrearSolicitudDe(ctx context.Context, u models.Usuari
 	if err := s.verificarAccesoEvento(ctx, u, dto.EventoID); err != nil {
 		return models.Solicitud{}, err
 	}
-	return s.CrearSolicitud(ctx, dto)
+	// Como en la base de datos de la empresa: la solicitud la envía el cliente (solicitante_usuario). Un cambio directo
+	// del asesor no es una solicitud sino una modificación aplicada (modificacion_evento, origen ASESOR).
+	if s.soloClientesEnvian && u.Rol != models.RolCliente {
+		return models.Solicitud{}, ErrAccesoDenegado
+	}
+	nueva, err := s.armarSolicitud(ctx, dto, false)
+	if err != nil {
+		return models.Solicitud{}, err
+	}
+	nueva.SolicitanteID = u.ID // el almacén de la empresa registra quién envía la solicitud
+	return s.solicitudRepo.CrearSolicitud(ctx, nueva)
 }
 
 // verificarAccesoEvento exige que el evento exista y que el usuario pueda verlo (si el id es 0, la validación

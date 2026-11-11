@@ -14,6 +14,7 @@ var (
 	_ repositories.SolicitudRepository = (*Store)(nil)
 	_ repositories.BloqueoRepository   = (*Store)(nil)
 	_ repositories.ClienteRepository   = (*Store)(nil)
+	_ repositories.AdicionalRepository = (*Store)(nil)
 )
 
 // Store gestiona el almacenamiento en memoria protegido contra accesos concurrentes mediante RWMutex
@@ -244,6 +245,16 @@ func (s *Store) ObtenerBloqueos(ctx context.Context) ([]models.BloqueoInstitucio
 	return copia, nil
 }
 
+// ObtenerAdicionales devuelve el catálogo simulado de adicionales (copia).
+func (s *Store) ObtenerAdicionales(ctx context.Context) ([]models.AdicionalCatalogo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	copia := make([]models.AdicionalCatalogo, len(models.CatalogoAdicionalesSimulado))
+	copy(copia, models.CatalogoAdicionalesSimulado)
+	return copia, nil
+}
+
 // ObtenerClientes devuelve una copia de los clientes registrados, ordenados por id.
 func (s *Store) ObtenerClientes(ctx context.Context) ([]models.Cliente, error) {
 	if err := ctx.Err(); err != nil {
@@ -269,4 +280,11 @@ func (s *Store) AgregarBloqueo(b models.BloqueoInstitucional) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bloqueos = append(s.bloqueos, b)
+}
+
+// AgregarEvento registra (o reemplaza) un evento por su id (útil en pruebas).
+func (s *Store) AgregarEvento(e models.Evento) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eventos[e.ID] = e
 }

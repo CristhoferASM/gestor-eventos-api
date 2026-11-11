@@ -151,6 +151,35 @@ $env:TEST_DATABASE_URL = $env:DATABASE_URL
 go test ./storage -count=1
 ```
 
+### B2. Base de datos de la empresa en Neon (esquema `showtech`)
+
+El backend también puede conectarse a la **base de datos de la empresa** (PostgreSQL 18 en Neon, São Paulo, esquema `showtech` con 40 tablas), decidido con el ingeniero. Es un modo aparte (`ESQUEMA_BD=empresa`) que **solo lee y escribe datos del módulo y nunca crea ni modifica tablas**: el usuario `backend_showtech` no puede, y los cambios de estructura los hace el administrador con un script versionado.
+
+**Cómo conectarse**
+1. Acepta la invitación a la organización de Neon (rol Collaborator) y pide al administrador el `.env` de la rama **`dev-backend`** (nunca `production`) con el usuario **`backend_showtech`** (no el administrador `neondb_owner`). También puedes sacarlo de Neon: rama `dev-backend` → **Connect** → rol `backend_showtech`.
+2. Copia `.env.example` como `.env` en la raíz y completa `DATABASE_URL` (host con `-pooler`), `DIRECT_URL` (sin `-pooler`), `ESQUEMA_BD=empresa` y una `CLAVE_DEMO` propia. `.env` está en `.gitignore`: nunca lo subas ni lo compartas.
+3. Comprueba la conexión (solo lectura; no imprime la contraseña): `go run ./cmd/probar-conexion`. Debe mostrar el usuario `backend_showtech`, 40 tablas, que **no** puede crear tablas y los datos de prueba.
+4. Arranca con `go run .` (lee el `.env` solo).
+
+**Qué hace en este modo**
+- **Eventos:** el horario vive en `evento_bloque` (EVENTO, MONTAJE, DESMONTAJE y ENSAYO); los adicionales, en `evento_adicional`; el cliente sale de `solicitud_cotizacion` → `cliente`. Los estados llegan como `CON_ADELANTO`, `RESERVADO`, etc. y la interfaz los muestra legibles. Solo los eventos con primer pago (`CON_ADELANTO`, `PAGADO`, `REALIZADO`) ocupan el auditorio.
+- **Solicitudes de modificación:** se guardan en `solicitud_modificacion` más dos versiones en `evento_version` (ORIGINAL y PROPUESTA) con sus bloques y adicionales, en una sola transacción. La base garantiza una sola solicitud pendiente por evento (también con peticiones simultáneas). El código `SOLM-AAAA-NNNN` lo calcula el backend. El retiro marca la solicitud como `RETIRADA` sin borrarla.
+- **Disponibilidad:** las reglas de cruce de la base solo protegen a los eventos ya reservados; una propuesta vive en `evento_version_bloque` y **no tiene restricción de cruce**, así que este backend sigue comprobando la disponibilidad contra los eventos que ocupan el auditorio y los bloqueos (`bloqueo_espacio`).
+- **Catálogo de adicionales:** viene de la tabla `adicional` (códigos como `COCHERA`, `LED_5X4`).
+- **Cuentas de demostración:** las contraseñas de la tabla `usuario` son de ejemplo (`HASH_EJEMPLO`) y no sirven para entrar. Mientras no se integre la autenticación con las tablas de acceso de la empresa, el backend crea en **memoria** (nunca en la base) las cuentas del asesor comercial y de los clientes de `usuario`, todas con la contraseña `CLAVE_DEMO`.
+- **Quién envía una solicitud:** solo el **cliente** (así lo modela la base: `solicitud_modificacion.solicitante_usuario` es el cliente). El asesor recibe `403` al enviar una solicitud en este modo; un cambio directo del asesor es una `modificacion_evento` con origen ASESOR (pendiente de implementar). El asesor sí puede consultar la disponibilidad (`POST /disponibilidad`).
+- **Costo de una modificación:** es la **penalidad por cambio de fecha**, no un cargo fijo: 1 o 1,5 horas de alquiler por la tarifa vigente del auditorio (`tarifa_espacio`; hoy S/ 100 por hora). Los eventos de la API traen `tarifa_hora_alquiler` y el paso 3 del cliente muestra la penalidad solo si se cambia la fecha; las horas las define el asesor al aprobar.
+- **Eventos modificables (provisional):** solo los eventos contratados (`RESERVADO`, `CON_ADELANTO`, `PAGADO`) admiten solicitudes; los cotizados, cancelados o ya realizados, no.
+
+**Estructura del código:** `storage/empresa.go` (almacén), `storage/empresa_conversion.go` (conversiones puras), `storage/empresa/esquema.sql` (subconjunto del esquema para sqlc; la fuente de verdad es la base) y `storage/empresa/queries/*.sql`, que sqlc convierte en `storage/empresadb/` con `sqlc generate`. Los horarios del esquema son `timestamp` **sin zona horaria** (hora de Lima).
+
+**Pruebas contra la base real** (solo `dev-backend`; crean datos sobre el evento 3 y los borran al terminar):
+```powershell
+$env:TEST_EMPRESA_DATABASE_URL = "<la misma cadena de DATABASE_URL>"
+go test ./storage -run Empresa -count=1 -v
+```
+Cada consulta tarda ~0,3 s desde Perú (la base está en São Paulo y, en el plan gratis, se duerme a los 5 minutos: la primera consulta puede tardar 1–2 s más), por eso las consultas independientes se lanzan en paralelo.
+
 Las reglas importantes las impone la propia base de datos: un índice único parcial garantiza una sola solicitud pendiente por evento (aun con peticiones simultáneas) y el retiro es un `UPDATE` condicional atómico. Los tokens de sesión, los ids de verificación y los ids de navegador se guardan solo como hash SHA-256.
 
 Diagrama de la arquitectura prevista:

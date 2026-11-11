@@ -191,3 +191,120 @@ func TestConsultarDisponibilidadValidaYRespetaPermisos(t *testing.T) {
 		t.Errorf("evento inexistente: se esperaba ErrEventoNoEncontrado, se obtuvo %v", err)
 	}
 }
+
+// eventoDePrueba crea un evento en memoria en una fecha y horario dados (sin tiempos técnicos).
+func eventoDePrueba(id uint, estado, fecha, inicio, fin string, noOcupa bool) models.Evento {
+	return models.Evento{
+		ID: id, Nombre: "Evento " + estado, Espacio: "Auditorio Showtech", Fecha: fecha, HoraInicio: inicio, HoraFin: fin,
+		Estado: estado, Contacto: "Contacto", NoOcupaHorario: noOcupa, Adicionales: []models.AdicionalItem{},
+	}
+}
+
+func TestDisponibilidadIgnoraEventosQueNoOcupanElAuditorio(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	// Un evento solo RESERVADO (sin primer pago) el 2026-12-19 de 18:00 a 22:00, y otro CON_ADELANTO el 2026-12-20
+	store.AgregarEvento(eventoDePrueba(10, "RESERVADO", "2026-12-19", "18:00", "22:00", true))
+	store.AgregarEvento(eventoDePrueba(11, "CON_ADELANTO", "2026-12-20", "18:00", "22:00", false))
+	svc := servicioConBloqueos(store)
+	asesor := models.Usuario{Rol: models.RolAsesor}
+
+	proponer := func(fecha string) error {
+		dto := solicitudEvento2(fecha, "19:00", "21:00", nil)
+		dto.Motivo = ""
+		return svc.ConsultarDisponibilidadDe(ctx, asesor, dto)
+	}
+	if err := proponer("2026-12-19"); err != nil {
+		t.Errorf("un evento RESERVADO no ocupa el auditorio, debía estar disponible: %v", err)
+	}
+	if err := proponer("2026-12-20"); !errors.Is(err, services.ErrSinDisponibilidad) {
+		t.Errorf("un evento CON_ADELANTO sí ocupa el auditorio: %v", err)
+	}
+}
+
+func TestSolicitudRechazaEventosNoContratados(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	for i, estado := range []string{"CON_SOLICITUD_COTIZACION", "COTIZADO", "CANCELADO", "EN_PROCESO_CANCELACION", "REALIZADO"} {
+		store.AgregarEvento(eventoDePrueba(uint(20+i), estado, "2026-12-01", "10:00", "12:00", false))
+	}
+	svc := servicioConBloqueos(store)
+	for i, estado := range []string{"CON_SOLICITUD_COTIZACION", "COTIZADO", "CANCELADO", "EN_PROCESO_CANCELACION", "REALIZADO"} {
+		dto := models.SolicitudCreacionDTO{
+			EventoID: uint(20 + i), Motivo: "Cambio", FechaPropuesta: "2026-12-02", HoraInicioPropuesta: "10:00", HoraFinPropuesta: "12:00",
+		}
+		if _, err := svc.CrearSolicitud(ctx, dto); !errors.Is(err, services.ErrDatosInvalidos) {
+			t.Errorf("%s: se esperaba ErrDatosInvalidos, se obtuvo %v", estado, err)
+		}
+	}
+	// Un evento en otro estado (p. ej. CON_ADELANTO) sí admite la solicitud
+	store.AgregarEvento(eventoDePrueba(30, "CON_ADELANTO", "2026-12-01", "10:00", "12:00", false))
+	ok := models.SolicitudCreacionDTO{EventoID: 30, Motivo: "Cambio", FechaPropuesta: "2026-12-02", HoraInicioPropuesta: "10:00", HoraFinPropuesta: "12:00"}
+	if _, err := svc.CrearSolicitud(ctx, ok); err != nil {
+		t.Errorf("un evento CON_ADELANTO debía admitir la solicitud: %v", err)
+	}
+}
+
+type catalogoFalso struct{ lista []models.AdicionalCatalogo }
+
+func (c catalogoFalso) ObtenerAdicionales(context.Context) ([]models.AdicionalCatalogo, error) {
+	return c.lista, nil
+}
+
+func TestSolicitudValidaAdicionalesContraElCatalogoDelRepositorio(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	catalogo := catalogoFalso{lista: []models.AdicionalCatalogo{{ID: "LED_5X4", Nombre: "Pantalla LED 5x4", TarifaHora: 200, Unidad: "equipo"}}}
+	svc := services.NewSolicitudService(store, store).ConBloqueos(store).ConCatalogo(catalogo)
+
+	pedir := func(id string) (models.Solicitud, error) {
+		adics := []models.AdicionalPropuestoDTO{{ID: id, Cantidad: 2, Horas: 3}}
+		dto := solicitudEvento2("2026-11-21", "14:00", "18:00", nil)
+		dto.AdicionalesPropuestos = &adics
+		return svc.CrearSolicitud(ctx, dto)
+	}
+	sol, err := pedir("LED_5X4")
+	if err != nil {
+		t.Fatalf("el adicional del catálogo del repositorio debía aceptarse: %v", err)
+	}
+	a := sol.DatosPropuestos.Adicionales
+	if len(a) != 1 || a[0].ID != "LED_5X4" || a[0].Subtotal != 1200 || a[0].TarifaHora != 200 {
+		t.Errorf("adicional propuesto: %+v", a)
+	}
+	// El catálogo simulado ya no se usa: «cochera» no existe en el catálogo del repositorio
+	if _, err := pedir("cochera"); !errors.Is(err, services.ErrDatosInvalidos) {
+		t.Errorf("un adicional que no está en el catálogo del repositorio debía rechazarse: %v", err)
+	}
+}
+
+func TestSoloClientesEnvianSolicitudes(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemoryStore()
+	asesor := models.Usuario{ID: 2, Rol: models.RolAsesor}
+	cliente := models.Usuario{ID: 3, Rol: models.RolCliente, ClienteID: "CLI-001"} // dueño del evento 1
+	dto := models.SolicitudCreacionDTO{EventoID: 1, Motivo: "Cambio", FechaPropuesta: "2026-11-16", HoraInicioPropuesta: "09:00", HoraFinPropuesta: "13:00"}
+	dto.TiemposTecnicosPropuestos = &models.TiemposTecnicosPropuestosDTO{}
+
+	// Por defecto (datos en memoria) el asesor también puede crearlas: comportamiento del prototipo
+	libre := servicioConBloqueos(store)
+	if sol, err := libre.CrearSolicitudDe(ctx, asesor, dto); err != nil || sol.SolicitanteID != asesor.ID {
+		t.Fatalf("sin la opción el asesor debía poder crearla: %+v, %v", sol, err)
+	}
+
+	// Con la opción (modelo de la base de la empresa) solo el cliente envía; el asesor sigue pudiendo consultar
+	store2 := storage.NewMemoryStore()
+	estricto := services.NewSolicitudService(store2, store2).ConBloqueos(store2).SoloClientesEnvian()
+	if _, err := estricto.CrearSolicitudDe(ctx, asesor, dto); !errors.Is(err, services.ErrAccesoDenegado) {
+		t.Errorf("el asesor no debía poder enviar: %v", err)
+	}
+	if err := estricto.ConsultarDisponibilidadDe(ctx, asesor, dto); err != nil {
+		t.Errorf("el asesor sí puede consultar la disponibilidad: %v", err)
+	}
+	sol, err := estricto.CrearSolicitudDe(ctx, cliente, dto)
+	if err != nil || sol.SolicitanteID != cliente.ID {
+		t.Errorf("el cliente dueño debía poder enviarla a su nombre: %+v, %v", sol, err)
+	}
+	if lista, _ := estricto.ObtenerSolicitudes(ctx); len(lista) != 1 {
+		t.Errorf("solo debía guardarse la del cliente: %+v", lista)
+	}
+}

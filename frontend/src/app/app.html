@@ -316,7 +316,43 @@
                 <p id="motivoReviewTexto">{{ borrador.motivo }}</p>
               </div>
 
-              <!-- Bloque informativo de costos y tarifas (referencial) -->
+              <!-- Bloque informativo de costos. Con la base de datos de la empresa el costo es la penalidad por cambio de fecha
+                   (1 o 1,5 horas de alquiler, tarifa vigente del auditorio); sin ella, las tarifas referenciales del prototipo. -->
+              @if (tarifaHoraAlquiler() > 0) {
+              <div class="bloque-costos-cliente bloque-penalidad-fecha">
+                <h4>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  Información sobre la penalidad por cambio de fecha
+                </h4>
+                @if (propuestaCambiaFecha()) {
+                  <div class="costos-items-grid">
+                    <div class="costo-item-card">
+                      <span class="costo-label">Penalidad de 1 hora de alquiler</span>
+                      <span class="costo-valor">{{ formatSoles(tarifaHoraAlquiler()) }}</span>
+                    </div>
+                    <div class="costo-item-card">
+                      <span class="costo-label">Penalidad de 1,5 horas de alquiler</span>
+                      <span class="costo-valor">{{ formatSoles(tarifaHoraAlquiler() * 1.5) }}</span>
+                    </div>
+                  </div>
+                  <div class="aviso aviso-info" style="margin-bottom: 0;">
+                    <strong>Penalidad pendiente de definir por el asesor</strong><br />
+                    Cambiar la fecha del evento genera una penalidad de 1 o 1,5 horas de alquiler (tarifa vigente: {{ formatSoles(tarifaHoraAlquiler()) }} por hora). El asesor comercial define las horas al aprobar el cambio; los importes mostrados son referenciales.
+                    <br /><small style="margin-top: 4px; display: block; color: var(--gris);">* Enviar esta solicitud no genera deudas automáticas ni requiere pagos en este paso.</small>
+                  </div>
+                } @else {
+                  <div class="aviso aviso-info" style="margin-bottom: 0;">
+                    <strong>Esta solicitud no cambia la fecha del evento</strong><br />
+                    La penalidad de 1 o 1,5 horas de alquiler ({{ formatSoles(tarifaHoraAlquiler()) }} por hora) aplica cuando se cambia la fecha. El asesor comercial confirmará el importe final al revisar la solicitud.
+                    <br /><small style="margin-top: 4px; display: block; color: var(--gris);">* Enviar esta solicitud no genera deudas automáticas ni requiere pagos en este paso.</small>
+                  </div>
+                }
+              </div>
+              } @else {
               <div class="bloque-costos-cliente">
                 <h4>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -342,6 +378,7 @@
                   <br /><small style="margin-top: 4px; display: block; color: var(--gris);">* Enviar esta solicitud no genera deudas automáticas ni requiere pagos en este paso.</small>
                 </div>
               </div>
+              }
 
               <p class="mensaje-reserva" role="note">
                 Al enviar la solicitud, quedará pendiente de revisión. Tu reserva actual se

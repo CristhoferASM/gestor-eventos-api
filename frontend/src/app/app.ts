@@ -28,6 +28,8 @@ import {
   TEXTO_SIN_ESPECIFICAR,
   calcularComparativoAdicionales,
   construirFilasComparativa,
+  eventoAdmiteModificacion,
+  formatSoles,
   formatearCodigoSolicitud,
   formatearFechaHoraEnvio,
   formatearFechaVisual,
@@ -64,6 +66,7 @@ export class App implements OnInit {
 
   /** Tarifas referenciales del prototipo (cliente.js: TARIFAS_REFERENCIALES). Sujetas a confirmación comercial. */
   readonly tarifasReferenciales = { cargoModificacion: 100, horaAuditorio: 500 } as const;
+  readonly formatSoles = formatSoles;
 
   /** La vista depende del rol de la sesión: el asesor ve su portal y el cliente, el suyo. */
   readonly vistaActiva = computed<'cliente' | 'asesor'>(() =>
@@ -232,6 +235,20 @@ export class App implements OnInit {
       }
     }
     return ids;
+  });
+
+  /**
+   * Tarifa vigente de alquiler por hora del auditorio. Con la base de datos de la empresa el evento la trae y el costo de
+   * una modificación es la penalidad por CAMBIO DE FECHA: 1 o 1,5 horas de alquiler (el asesor define las horas al
+   * aprobar). Con los datos en memoria no existe (0) y se muestran las tarifas referenciales del prototipo.
+   */
+  readonly tarifaHoraAlquiler = computed<number>(() => this.eventoSeleccionado()?.tarifa_hora_alquiler ?? 0);
+
+  /** true si la propuesta cambia la fecha del evento (la penalidad solo aplica en ese caso). */
+  readonly propuestaCambiaFecha = computed<boolean>(() => {
+    const evento = this.eventoSeleccionado();
+    const borrador = this.borradorPropuesta();
+    return !!evento && !!borrador && borrador.fecha_propuesta !== evento.fecha;
   });
 
   readonly eventoSeleccionadoTienePendiente = computed<boolean>(() => {
@@ -431,8 +448,13 @@ export class App implements OnInit {
         if (actual) {
           const actualizado = eventosSeguros.find((e) => e.id === actual.id) ?? null;
           this.eventoSeleccionado.set(actualizado);
-        } else if (eventosSeguros.length > 0) {
-          this.eventoSeleccionado.set(eventosSeguros[0]);
+        } else {
+          // Se preselecciona el primer evento que admite modificación (con la base de datos de la empresa, los
+          // cotizados, cancelados o ya realizados no la admiten); si ninguno la admite, no se selecciona nada
+          const primero = eventosSeguros.find((e) => eventoAdmiteModificacion(e));
+          if (primero) {
+            this.eventoSeleccionado.set(primero);
+          }
         }
       },
       error: (err: unknown) => {
