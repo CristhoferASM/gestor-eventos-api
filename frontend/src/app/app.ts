@@ -28,6 +28,7 @@ import {
   TEXTO_SIN_ESPECIFICAR,
   calcularComparativoAdicionales,
   construirFilasComparativa,
+  eventoAdmiteModificacion,
   formatearCodigoSolicitud,
   formatearFechaHoraEnvio,
   formatearFechaVisual,
@@ -431,8 +432,13 @@ export class App implements OnInit {
         if (actual) {
           const actualizado = eventosSeguros.find((e) => e.id === actual.id) ?? null;
           this.eventoSeleccionado.set(actualizado);
-        } else if (eventosSeguros.length > 0) {
-          this.eventoSeleccionado.set(eventosSeguros[0]);
+        } else {
+          // Se preselecciona el primer evento que admite modificación (con la base de datos de la empresa, los
+          // cotizados, cancelados o ya realizados no la admiten); si ninguno la admite, no se selecciona nada
+          const primero = eventosSeguros.find((e) => eventoAdmiteModificacion(e));
+          if (primero) {
+            this.eventoSeleccionado.set(primero);
+          }
         }
       },
       error: (err: unknown) => {

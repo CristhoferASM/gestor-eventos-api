@@ -226,6 +226,11 @@ func (s *PostgresStore) ObtenerClientes(ctx context.Context) ([]models.Cliente, 
 	return lista, nil
 }
 
+// ObtenerAdicionales devuelve el catálogo simulado: el almacén propio no tiene tabla de adicionales.
+func (s *PostgresStore) ObtenerAdicionales(ctx context.Context) ([]models.AdicionalCatalogo, error) {
+	return models.CatalogoAdicionalesSimulado, nil
+}
+
 // ---------------------------------------------------------------- bloqueos
 
 func (s *PostgresStore) ObtenerBloqueos(ctx context.Context) ([]models.BloqueoInstitucional, error) {

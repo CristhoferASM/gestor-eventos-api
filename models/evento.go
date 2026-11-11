@@ -2,7 +2,13 @@ package models
 
 // Evento representa un evento gestionado en SHOWTECH SOLUTIONS.
 type Evento struct {
-	ID            uint   `json:"id"`
+	ID uint `json:"id"`
+	// Codigo es el código visible del evento en la base de datos de la empresa (ej. "EV-0003"); lo genera la base.
+	Codigo string `json:"codigo,omitempty"`
+	// NoOcupaHorario indica que el evento aún no ocupa el auditorio (en la base de la empresa solo ocupan horario los
+	// eventos con primer pago: CON_ADELANTO, PAGADO y REALIZADO). El valor cero (false) significa que sí lo ocupa,
+	// que es el caso de los datos de demostración en memoria. No viaja en el JSON.
+	NoOcupaHorario bool `json:"-"`
 	ClienteID     string `json:"cliente_id"` // Dueño del evento (ej. "CLI-001"); define qué cliente puede verlo
 	// ClienteNombre es la razón social del cliente. No se guarda con el evento: EventoService la completa al consultar
 	// a partir de la tabla de clientes (vacío si el cliente aún no está registrado allí).

@@ -32,6 +32,11 @@ type ClienteRepository interface {
 	ObtenerClientes(ctx context.Context) ([]models.Cliente, error)
 }
 
+// AdicionalRepository define la consulta del catálogo de adicionales (recursos técnicos con su tarifa por hora).
+type AdicionalRepository interface {
+	ObtenerAdicionales(ctx context.Context) ([]models.AdicionalCatalogo, error)
+}
+
 // BloqueoRepository define la consulta de bloqueos institucionales del auditorio.
 type BloqueoRepository interface {
 	ObtenerBloqueos(ctx context.Context) ([]models.BloqueoInstitucional, error)

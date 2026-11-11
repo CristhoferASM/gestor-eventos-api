@@ -150,7 +150,7 @@
                     }
                   </td>
                   <td class="th-estado col-estado">
-                    <span class="etiqueta et-confirmado insignia-estado">{{ evt.estado || 'Confirmado' }}</span>
+                    <span class="etiqueta et-confirmado insignia-estado">{{ formatearEstadoEvento(evt.estado) || 'Confirmado' }}</span>
                   </td>
                   <td class="th-accion col-accion num-der">
                     <button
@@ -179,7 +179,7 @@
             <div class="tarjeta-evento-item" [class.activa]="eventoSeleccionadoId() === evt.id">
               <div class="tarjeta-evento-header tarjeta-evento-cab">
                 <span class="tarjeta-evento-codigo">{{ codigoEvento(evt.id) }}</span>
-                <span class="etiqueta et-confirmado insignia-estado">{{ evt.estado || 'Confirmado' }}</span>
+                <span class="etiqueta et-confirmado insignia-estado">{{ formatearEstadoEvento(evt.estado) || 'Confirmado' }}</span>
               </div>
               <div class="tarjeta-evento-titulo">{{ evt.nombre }}</div>
               <div class="tarjeta-evento-cliente"><strong>Cliente:</strong> {{ obtenerClienteEvento(evt) }}</div>
@@ -375,7 +375,7 @@
         <div class="tarjeta-cabecera-flex">
           <h2>2. Modificar datos del evento</h2>
           <div class="etiqueta et-evento-activo" id="badgeEventoPaso2">
-            {{ codigoEvento(borrador()?.evento_id) }} &bull; Confirmado
+            {{ codigoEvento(borrador()?.evento_id) }} &bull; {{ formatearEstadoEvento(eventoSeleccionado()?.estado) || 'Confirmado' }}
           </div>
         </div>
 
