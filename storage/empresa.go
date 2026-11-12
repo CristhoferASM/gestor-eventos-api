@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"context"
 	"errors"
 	"fmt"
@@ -53,6 +54,9 @@ func NewEmpresaStore(ctx context.Context, url string) (*EmpresaStore, error) {
 	// El host con «-pooler» usa PgBouncer en modo transacción: no se pueden usar sentencias preparadas con nombre
 	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheDescribe
 	cfg.MaxConns = 5
+	// Conexiones siempre abiertas: las consultas en paralelo no pagan el arranque de una conexión nueva (~1 s hasta São Paulo).
+	cfg.MinConns = 4
+	cfg.HealthCheckPeriod = 30 * time.Second
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -336,9 +340,15 @@ func (s *EmpresaStore) CrearSolicitud(ctx context.Context, sol models.Solicitud)
 	}
 	const maxIntentos = 5
 	for intento := 0; intento < maxIntentos; intento++ {
-		id, err := s.insertarSolicitud(ctx, sol)
+		insertada, err := s.insertarSolicitud(ctx, sol)
 		if err == nil {
-			return s.solicitudPorID(ctx, id)
+			// Se devuelve lo que ya se sabe (más lo que asignó la base): releer todas las solicitudes costaba más de un segundo.
+			creada := sol
+			creada.ID = uint(insertada.ID)
+			creada.Codigo = insertada.Codigo
+			creada.Estado = models.EstadoPendienteRevision
+			creada.FechaCreacion = insertada.EnviadaEn.In(zonaLimaBD).Format(time.RFC3339)
+			return creada, nil
 		}
 		if esViolacionDe(err, pgViolacionUnica, restriccionCodigoUnico) {
 			continue // otra petición tomó el mismo número de código: se recalcula
@@ -348,104 +358,116 @@ func (s *EmpresaStore) CrearSolicitud(ctx context.Context, sol models.Solicitud)
 	return models.Solicitud{}, errors.New("no se pudo asignar un código único a la solicitud")
 }
 
-func (s *EmpresaStore) insertarSolicitud(ctx context.Context, sol models.Solicitud) (int32, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := s.q.WithTx(tx)
+// solicitudInsertada es lo que la base asigna al guardar una solicitud.
+type solicitudInsertada struct {
+	ID        int32
+	Codigo    string
+	EnviadaEn time.Time
+}
 
-	evento, err := q.ObtenerEvento(ctx, int32(sol.EventoID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, repositories.ErrEventoNoEncontrado
-	}
+func (s *EmpresaStore) insertarSolicitud(ctx context.Context, sol models.Solicitud) (solicitudInsertada, error) {
+	var vacia solicitudInsertada
+	versiones, bloques, adicionales, err := documentosDeVersiones(sol)
 	if err != nil {
-		return 0, err
+		return vacia, err
 	}
-
+	// Cada ida y vuelta a la base cuesta ~0,3 s (São Paulo): la solicitud, sus dos versiones, todos sus bloques de horario y sus
+	// adicionales se guardan con UNA sola consulta, que es atómica por sí misma (no hace falta una transacción aparte).
 	anio := time.Now().In(zonaLimaBD).Year()
-	numero, err := q.SiguienteNumeroSolicitudMod(ctx, fmt.Sprintf("SOLM-%d-", anio))
-	if err != nil {
-		return 0, err
-	}
-	fila, err := q.InsertarSolicitudMod(ctx, empresadb.InsertarSolicitudModParams{
-		Codigo:             fmt.Sprintf("SOLM-%d-%04d", anio, numero),
-		IDEvento:           int32(sol.EventoID),
-		SolicitanteUsuario: int32(sol.SolicitanteID),
-		VersionEventoBase:  evento.Version,
-		Motivo:             sol.Motivo,
+	fila, err := s.q.CrearSolicitudModCompleta(ctx, empresadb.CrearSolicitudModCompletaParams{
+		Prefijo:     fmt.Sprintf("SOLM-%d-", anio),
+		IDEvento:    int32(sol.EventoID),
+		Solicitante: int32(sol.SolicitanteID),
+		Motivo:      sol.Motivo,
+		Versiones:   versiones,
+		Bloques:     bloques,
+		Adicionales: adicionales,
 	})
 	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return vacia, repositories.ErrEventoNoEncontrado // el evento no existe: la consulta no insertó nada
 	case esViolacionDe(err, pgViolacionUnica, restriccionPendienteUnica):
-		return 0, repositories.ErrSolicitudPendienteDuplicada
+		return vacia, repositories.ErrSolicitudPendienteDuplicada
 	case esViolacionDe(err, pgViolacionFK, ""):
-		return 0, repositories.ErrEventoNoEncontrado
+		return vacia, repositories.ErrEventoNoEncontrado
 	case err != nil:
-		return 0, err
+		return vacia, err
 	}
+	return solicitudInsertada{ID: fila.IDSolicitudMod, Codigo: fila.Codigo, EnviadaEn: fila.EnviadaEn}, nil
+}
 
-	// «Antes» (versión actual del evento) y «después» (propuesta, versión siguiente)
-	for _, v := range []struct {
-		tipo   string
-		numero int32
-		datos  models.DatosHorario
+const formatoMomentoBD = "2006-01-02T15:04:05" // hora de pared de Lima, sin zona (columnas timestamp)
+
+// documentosDeVersiones arma los documentos JSON que recibe CrearSolicitudModCompleta: las dos versiones (ORIGINAL y PROPUESTA),
+// todos sus bloques de horario y todos sus adicionales.
+func documentosDeVersiones(sol models.Solicitud) (versiones, bloques, adicionales []byte, err error) {
+	type versionJSON struct {
+		Tipo          string `json:"tipo"`
+		Delta         int32  `json:"delta"` // 0 = versión actual del evento, 1 = la siguiente (propuesta)
+		Nombre        string `json:"nombre"`
+		Contacto      string `json:"contacto"`
+		Telefono      string `json:"telefono"`
+		Correo        string `json:"correo"`
+		Observaciones string `json:"observaciones"`
+	}
+	type bloqueJSON struct {
+		Version string `json:"version"`
+		Tipo    string `json:"tipo"`
+		Inicio  string `json:"inicio"`
+		Fin     string `json:"fin"`
+	}
+	type adicionalJSON struct {
+		Version  string `json:"version"`
+		Codigo   string `json:"codigo"`
+		Cantidad int32  `json:"cantidad"`
+		Inicio   string `json:"inicio"`
+		Fin      string `json:"fin"`
+	}
+	origen := []struct {
+		tipo  string
+		delta int32
+		datos models.DatosHorario
 	}{
-		{versionOriginal, evento.Version, sol.DatosOriginales},
-		{versionPropuesta, evento.Version + 1, sol.DatosPropuestos},
-	} {
-		if err := guardarVersion(ctx, q, int32(sol.EventoID), fila.IDSolicitudMod, v.tipo, v.numero, v.datos); err != nil {
-			return 0, err
+		{versionOriginal, 0, sol.DatosOriginales},
+		{versionPropuesta, 1, sol.DatosPropuestos},
+	}
+	listaVersiones := make([]versionJSON, 0, len(origen))
+	listaBloques := []bloqueJSON{}
+	listaAdicionales := []adicionalJSON{}
+	for _, o := range origen {
+		d := o.datos
+		listaVersiones = append(listaVersiones, versionJSON{o.tipo, o.delta, d.Nombre, d.Contacto, d.Telefono, d.Correo, d.Observaciones})
+		bloquesDeVersion, err := bloquesDeDatos(d)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		var inicioEvento time.Time
+		for _, b := range bloquesDeVersion {
+			if b.Tipo == tipoBloqueEvento {
+				inicioEvento = b.Inicio
+			}
+			listaBloques = append(listaBloques, bloqueJSON{o.tipo, b.Tipo, b.Inicio.Format(formatoMomentoBD), b.Fin.Format(formatoMomentoBD)})
+		}
+		// Los adicionales se usan desde el inicio del evento durante las horas indicadas
+		for _, a := range d.Adicionales {
+			listaAdicionales = append(listaAdicionales, adicionalJSON{
+				o.tipo, a.ID, int32(a.Cantidad),
+				inicioEvento.Format(formatoMomentoBD), inicioEvento.Add(time.Duration(a.Horas) * time.Hour).Format(formatoMomentoBD),
+			})
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return 0, err
+	if versiones, err = json.Marshal(listaVersiones); err != nil {
+		return nil, nil, nil, err
 	}
-	return fila.IDSolicitudMod, nil
+	if bloques, err = json.Marshal(listaBloques); err != nil {
+		return nil, nil, nil, err
+	}
+	if adicionales, err = json.Marshal(listaAdicionales); err != nil {
+		return nil, nil, nil, err
+	}
+	return versiones, bloques, adicionales, nil
 }
 
-func guardarVersion(ctx context.Context, q *empresadb.Queries, idEvento, idSolicitud int32, tipo string, numero int32, d models.DatosHorario) error {
-	idVersion, err := q.InsertarVersion(ctx, empresadb.InsertarVersionParams{
-		IDEvento:       idEvento,
-		IDSolicitudMod: pgtype.Int4{Int32: idSolicitud, Valid: true},
-		Tipo:           tipo,
-		NumeroVersion:  numero,
-		NombreEvento:   d.Nombre,
-		Contacto:       d.Contacto,
-		Telefono:       textoOpcional(d.Telefono),
-		Correo:         textoOpcional(d.Correo),
-		Observaciones:  textoOpcional(d.Observaciones),
-	})
-	if err != nil {
-		return err
-	}
-	bloques, err := bloquesDeDatos(d)
-	if err != nil {
-		return err
-	}
-	var inicioEvento time.Time
-	for _, b := range bloques {
-		if b.Tipo == tipoBloqueEvento {
-			inicioEvento = b.Inicio
-		}
-		if err := q.InsertarVersionBloque(ctx, empresadb.InsertarVersionBloqueParams{IDVersion: idVersion, Tipo: b.Tipo, Inicio: b.Inicio, Fin: b.Fin}); err != nil {
-			return err
-		}
-	}
-	// Los adicionales se usan desde el inicio del evento durante las horas indicadas
-	for _, a := range d.Adicionales {
-		if err := q.InsertarVersionAdicional(ctx, empresadb.InsertarVersionAdicionalParams{
-			IDVersion: idVersion, Cantidad: int32(a.Cantidad), Inicio: inicioEvento,
-			Fin: inicioEvento.Add(time.Duration(a.Horas) * time.Hour), Codigo: a.ID,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// RetirarSolicitud pasa de forma atómica a RETIRADA solo si sigue PENDIENTE: el UPDATE condicional evita que dos retiros
-// simultáneos tengan éxito a la vez. La solicitud no se elimina.
 func (s *EmpresaStore) RetirarSolicitud(ctx context.Context, id uint, fechaRetiro string) (models.Solicitud, error) {
 	retirada, err := time.Parse(time.RFC3339, fechaRetiro)
 	if err != nil {

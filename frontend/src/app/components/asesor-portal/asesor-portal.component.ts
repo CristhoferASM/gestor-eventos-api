@@ -20,6 +20,7 @@ import {
   ResumenComparativoAdicionales,
   Solicitud,
   calcularComparativoAdicionales,
+  formatearCodigoEvento,
   construirFilasComparativa,
   crearBorradorAsesorDesdeEvento,
   formatSoles,
@@ -1141,18 +1142,7 @@ export class AsesorPortalComponent implements OnInit {
    * Elimina la generación artificial de prefijos «EVT-» y el relleno con ceros.
    */
   codigoEvento(id?: number | null): string {
-    if (id === undefined || id === null) return 'ID: -';
-    const ev = this.eventos().find((e) => e.id === id);
-    if (ev) {
-      const codComercial =
-        (ev as unknown as { codigo?: string; codigo_comercial?: string; code?: string }).codigo ||
-        (ev as unknown as { codigo?: string; codigo_comercial?: string; code?: string }).codigo_comercial ||
-        (ev as unknown as { codigo?: string; codigo_comercial?: string; code?: string }).code;
-      if (codComercial && codComercial.trim()) {
-        return codComercial.trim();
-      }
-    }
-    return `ID: ${id}`;
+    return formatearCodigoEvento(id, this.eventos());
   }
 
   /**

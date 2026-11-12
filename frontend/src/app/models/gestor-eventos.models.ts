@@ -1006,6 +1006,21 @@ export interface RespuestaSesion {
 }
 
 /**
+ * Identificador visible de un evento: su código en la base de datos de la empresa (ej. «EV-0003») si existe y, si no
+ * (datos en memoria), «ID: 1». Recibe el id y la lista de eventos para poder buscarlo.
+ */
+export function formatearCodigoEvento(
+  id: number | null | undefined,
+  eventos: readonly { id: number; codigo?: string | null }[],
+): string {
+  if (id === undefined || id === null) {
+    return 'ID: -';
+  }
+  const codigo = eventos.find((e) => e.id === id)?.codigo?.trim();
+  return codigo ? codigo : `ID: ${id}`;
+}
+
+/**
  * Código legible de una solicitud, como en el prototipo (ej. «SOL-2026-001»).
  * El año sale de fecha_creacion; si no se puede leer, se usa el año actual.
  */

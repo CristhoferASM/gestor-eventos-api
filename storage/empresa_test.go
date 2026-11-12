@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"regexp"
 	"sync"
 	"testing"
@@ -416,4 +417,42 @@ func TestEmpresaElEventoTraeLaTarifaVigenteDelAuditorio(t *testing.T) {
 			t.Errorf("%s: tarifa %v", e.Codigo, e.TarifaHoraAlquiler)
 		}
 	}
+}
+
+// Crear una solicitud devuelve lo que ya sabe en vez de releer todas las solicitudes (era lo más lento del envío): el
+// resultado tiene que ser idéntico a lo que después entrega la lista.
+func TestEmpresaLaSolicitudCreadaEsIgualALaQueDevuelveLaLista(t *testing.T) {
+	s, url := abrirEmpresa(t)
+	ctx := context.Background()
+	svc := servicioEmpresa(s)
+
+	dto := cambioObservaciones("")
+	dto.HoraInicioPropuesta = "19:00"
+	dto.TiemposTecnicosPropuestos = &models.TiemposTecnicosPropuestosDTO{
+		HasMontaje: true, MontajeFecha: "2026-12-06", MontajeHoraInicio: "13:00", MontajeHoraFin: "17:00",
+	}
+	adicionales := []models.AdicionalPropuestoDTO{{ID: "COCHERA", Cantidad: 2, Horas: 3}}
+	dto.AdicionalesPropuestos = &adicionales
+	creada, err := svc.CrearSolicitudDe(ctx, clientePrueba, dto)
+	if errors.Is(err, services.ErrSolicitudPendienteDuplicada) {
+		t.Skip("el evento 3 ya tiene una solicitud pendiente de otra persona")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { borrarSolicitudes(t, url, creada.ID) })
+
+	lista, err := s.ObtenerSolicitudes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leida := range lista {
+		if leida.ID == creada.ID {
+			if !reflect.DeepEqual(creada, leida) {
+				t.Errorf("la solicitud devuelta al crear difiere de la que entrega la lista; creada=%+v; leida=%+v", creada, leida)
+			}
+			return
+		}
+	}
+	t.Fatalf("la solicitud %d no aparece en la lista", creada.ID)
 }

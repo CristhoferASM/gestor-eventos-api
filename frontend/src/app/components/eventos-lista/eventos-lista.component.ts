@@ -94,7 +94,7 @@ import {
             >
               <div class="tarjeta-evento-cabecera">
                 <div>
-                  <span class="badge-solicitud-codigo">ID: {{ evento.id }}</span>
+                  <span class="badge-solicitud-codigo">{{ evento.codigo || 'ID: ' + evento.id }}</span>
                   <h3 class="evento-titulo">{{ evento.nombre }}</h3>
                 </div>
                 <div class="insignias-evento">

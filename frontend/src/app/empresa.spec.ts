@@ -4,6 +4,7 @@ import {
   Evento,
   Solicitud,
   eventoAdmiteModificacion,
+  formatearCodigoEvento,
   formatearCodigoSolicitud,
   formatearEstadoEvento,
 } from './models/gestor-eventos.models';
@@ -82,6 +83,18 @@ describe('Lista de eventos con estados de la base de datos de la empresa', () =>
       expect(boton.getAttribute('title')).toContain('eventos contratados');
     }
     expect(tarjeta(el, 6).querySelector('.insignia-estado')?.textContent?.trim()).toBe('Cotizado');
+  });
+
+  it('muestra el código del evento (EV-0003) en la tarjeta, no el id numérico', () => {
+    const el = montar([BASE], []);
+    expect(tarjeta(el, 3).querySelector('.badge-solicitud-codigo')?.textContent?.trim()).toBe('EV-0003');
+  });
+
+  it('formatearCodigoEvento usa el código y, sin él, el id', () => {
+    expect(formatearCodigoEvento(3, [BASE])).toBe('EV-0003');
+    expect(formatearCodigoEvento(1, [{ ...BASE, id: 1, codigo: undefined }])).toBe('ID: 1');
+    expect(formatearCodigoEvento(9, [BASE])).toBe('ID: 9');
+    expect(formatearCodigoEvento(null, [BASE])).toBe('ID: -');
   });
 
   it('muestra el código real de la solicitud pendiente', () => {

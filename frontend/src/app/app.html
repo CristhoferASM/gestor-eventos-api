@@ -481,7 +481,7 @@
                 </div>
                 <div class="confirmacion-meta-item">
                   <small>Evento</small>
-                  <strong>ID: {{ sol.evento_id }} - {{ obtenerNombreSnapshotOriginal(sol) }}</strong>
+                  <strong>{{ codigoDelEvento(sol.evento_id) }} - {{ obtenerNombreSnapshotOriginal(sol) }}</strong>
                 </div>
                 <div class="confirmacion-meta-item">
                   <small>Fecha y hora de envío</small>
@@ -572,7 +572,7 @@
             <div class="modal-dato">
               <span class="modal-dato__label">Evento (según snapshot original)</span>
               <strong>{{ obtenerNombreSnapshotOriginal(solModal) }}</strong>
-              <span class="modal-dato__meta">ID del evento: {{ solModal.evento_id }}</span>
+              <span class="modal-dato__meta">Evento: {{ codigoDelEvento(solModal.evento_id) }}</span>
             </div>
             <div class="modal-dato">
               <span class="modal-dato__label">Espacio</span>

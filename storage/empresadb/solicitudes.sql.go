@@ -22,6 +22,79 @@ func (q *Queries) BorrarSolicitudMod(ctx context.Context, idSolicitudMod int32) 
 	return err
 }
 
+const crearSolicitudModCompleta = `-- name: CrearSolicitudModCompleta :one
+WITH previo AS (
+  SELECT e.version,
+         (SELECT (coalesce(max(substring(codigo from '[0-9]+$')::int), 0) + 1)::int
+            FROM solicitud_modificacion
+           WHERE codigo LIKE $1::text || '%') AS siguiente
+    FROM evento e
+   WHERE e.id_evento = $2::int
+), sol AS (
+  INSERT INTO solicitud_modificacion (codigo, id_evento, solicitante_usuario, version_evento_base, motivo, estado)
+  SELECT $1::text || lpad(previo.siguiente::text, 4, '0'), $2::int,
+         $3::int, previo.version, $4::text, 'PENDIENTE'
+    FROM previo
+  RETURNING id_solicitud_mod, codigo, enviada_en
+), ver AS (
+  INSERT INTO evento_version (id_evento, id_solicitud_mod, tipo, numero_version, nombre_evento, contacto, telefono, correo, observaciones)
+  SELECT $2::int, sol.id_solicitud_mod, v->>'tipo', previo.version + (v->>'delta')::int, v->>'nombre', v->>'contacto',
+         NULLIF(v->>'telefono', ''), NULLIF(v->>'correo', ''), NULLIF(v->>'observaciones', '')
+    FROM sol, previo, jsonb_array_elements($5::jsonb) AS v
+  RETURNING id_version, tipo
+), blo AS (
+  INSERT INTO evento_version_bloque (id_version, tipo, inicio, fin)
+  SELECT ver.id_version, b->>'tipo', (b->>'inicio')::timestamp, (b->>'fin')::timestamp
+    FROM jsonb_array_elements($6::jsonb) AS b
+    JOIN ver ON ver.tipo = b->>'version'
+  RETURNING id_version
+), adi AS (
+  INSERT INTO evento_version_adicional (id_version, id_adicional, cantidad, inicio, fin)
+  SELECT ver.id_version, a.id_adicional, (x->>'cantidad')::int, (x->>'inicio')::timestamp, (x->>'fin')::timestamp
+    FROM jsonb_array_elements($7::jsonb) AS x
+    JOIN ver      ON ver.tipo = x->>'version'
+    JOIN adicional a ON a.codigo = x->>'codigo'
+  RETURNING id_version
+)
+SELECT sol.id_solicitud_mod, sol.codigo, sol.enviada_en FROM sol
+`
+
+type CrearSolicitudModCompletaParams struct {
+	Prefijo     string
+	IDEvento    int32
+	Solicitante int32
+	Motivo      string
+	Versiones   []byte
+	Bloques     []byte
+	Adicionales []byte
+}
+
+type CrearSolicitudModCompletaRow struct {
+	IDSolicitudMod int32
+	Codigo         string
+	EnviadaEn      time.Time
+}
+
+// Crea la solicitud, sus dos versiones, todos los bloques de horario y todos los adicionales en UNA sola consulta (atómica):
+// una sola ida y vuelta a la base en vez de siete. El código SOLM-AAAA-NNNN sale del número siguiente del año.
+// versiones:   [{"tipo","delta","nombre","contacto","telefono","correo","observaciones"}]   (delta 0 = ORIGINAL, 1 = PROPUESTA)
+// bloques:     [{"version","tipo","inicio","fin"}]                                           (version = tipo de la versión)
+// adicionales: [{"version","codigo","cantidad","inicio","fin"}]
+func (q *Queries) CrearSolicitudModCompleta(ctx context.Context, arg CrearSolicitudModCompletaParams) (CrearSolicitudModCompletaRow, error) {
+	row := q.db.QueryRow(ctx, crearSolicitudModCompleta,
+		arg.Prefijo,
+		arg.IDEvento,
+		arg.Solicitante,
+		arg.Motivo,
+		arg.Versiones,
+		arg.Bloques,
+		arg.Adicionales,
+	)
+	var i CrearSolicitudModCompletaRow
+	err := row.Scan(&i.IDSolicitudMod, &i.Codigo, &i.EnviadaEn)
+	return i, err
+}
+
 const existeSolicitudMod = `-- name: ExisteSolicitudMod :one
 SELECT EXISTS (SELECT 1 FROM solicitud_modificacion WHERE id_solicitud_mod = $1)
 `
@@ -34,6 +107,7 @@ func (q *Queries) ExisteSolicitudMod(ctx context.Context, idSolicitudMod int32) 
 }
 
 const insertarSolicitudMod = `-- name: InsertarSolicitudMod :one
+
 INSERT INTO solicitud_modificacion (codigo, id_evento, solicitante_usuario, version_evento_base, motivo, estado)
 VALUES ($1, $2, $3, $4, $5, 'PENDIENTE')
 RETURNING id_solicitud_mod, enviada_en
@@ -52,6 +126,7 @@ type InsertarSolicitudModRow struct {
 	EnviadaEn      time.Time
 }
 
+// ============================ Escritura ============================
 func (q *Queries) InsertarSolicitudMod(ctx context.Context, arg InsertarSolicitudModParams) (InsertarSolicitudModRow, error) {
 	row := q.db.QueryRow(ctx, insertarSolicitudMod,
 		arg.Codigo,
@@ -63,89 +138,6 @@ func (q *Queries) InsertarSolicitudMod(ctx context.Context, arg InsertarSolicitu
 	var i InsertarSolicitudModRow
 	err := row.Scan(&i.IDSolicitudMod, &i.EnviadaEn)
 	return i, err
-}
-
-const insertarVersion = `-- name: InsertarVersion :one
-INSERT INTO evento_version (id_evento, id_solicitud_mod, tipo, numero_version, nombre_evento, contacto, telefono, correo, observaciones)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id_version
-`
-
-type InsertarVersionParams struct {
-	IDEvento       int32
-	IDSolicitudMod pgtype.Int4
-	Tipo           string
-	NumeroVersion  int32
-	NombreEvento   string
-	Contacto       string
-	Telefono       pgtype.Text
-	Correo         pgtype.Text
-	Observaciones  pgtype.Text
-}
-
-func (q *Queries) InsertarVersion(ctx context.Context, arg InsertarVersionParams) (int32, error) {
-	row := q.db.QueryRow(ctx, insertarVersion,
-		arg.IDEvento,
-		arg.IDSolicitudMod,
-		arg.Tipo,
-		arg.NumeroVersion,
-		arg.NombreEvento,
-		arg.Contacto,
-		arg.Telefono,
-		arg.Correo,
-		arg.Observaciones,
-	)
-	var id_version int32
-	err := row.Scan(&id_version)
-	return id_version, err
-}
-
-const insertarVersionAdicional = `-- name: InsertarVersionAdicional :exec
-INSERT INTO evento_version_adicional (id_version, id_adicional, cantidad, inicio, fin)
-SELECT $1::int, a.id_adicional, $2::int, $3::timestamp, $4::timestamp
-  FROM adicional a
- WHERE a.codigo = $5::text
-`
-
-type InsertarVersionAdicionalParams struct {
-	IDVersion int32
-	Cantidad  int32
-	Inicio    time.Time
-	Fin       time.Time
-	Codigo    string
-}
-
-// El adicional se identifica por su código del catálogo (ej. COCHERA).
-func (q *Queries) InsertarVersionAdicional(ctx context.Context, arg InsertarVersionAdicionalParams) error {
-	_, err := q.db.Exec(ctx, insertarVersionAdicional,
-		arg.IDVersion,
-		arg.Cantidad,
-		arg.Inicio,
-		arg.Fin,
-		arg.Codigo,
-	)
-	return err
-}
-
-const insertarVersionBloque = `-- name: InsertarVersionBloque :exec
-INSERT INTO evento_version_bloque (id_version, tipo, inicio, fin) VALUES ($1, $2, $3, $4)
-`
-
-type InsertarVersionBloqueParams struct {
-	IDVersion int32
-	Tipo      string
-	Inicio    time.Time
-	Fin       time.Time
-}
-
-func (q *Queries) InsertarVersionBloque(ctx context.Context, arg InsertarVersionBloqueParams) error {
-	_, err := q.db.Exec(ctx, insertarVersionBloque,
-		arg.IDVersion,
-		arg.Tipo,
-		arg.Inicio,
-		arg.Fin,
-	)
-	return err
 }
 
 const listarSolicitudesMod = `-- name: ListarSolicitudesMod :many
@@ -389,20 +381,4 @@ func (q *Queries) RetirarSolicitudMod(ctx context.Context, arg RetirarSolicitudM
 	var id_solicitud_mod int32
 	err := row.Scan(&id_solicitud_mod)
 	return id_solicitud_mod, err
-}
-
-const siguienteNumeroSolicitudMod = `-- name: SiguienteNumeroSolicitudMod :one
-
-SELECT (coalesce(max(substring(codigo from '[0-9]+$')::int), 0) + 1)::int AS siguiente
-  FROM solicitud_modificacion
- WHERE codigo LIKE $1::text || '%'
-`
-
-// ============================ Escritura ============================
-// Siguiente número del código SOLM-AAAA-NNNN para el año indicado (SOLM-2026-0002 -> 3).
-func (q *Queries) SiguienteNumeroSolicitudMod(ctx context.Context, prefijo string) (int32, error) {
-	row := q.db.QueryRow(ctx, siguienteNumeroSolicitudMod, prefijo)
-	var siguiente int32
-	err := row.Scan(&siguiente)
-	return siguiente, err
 }

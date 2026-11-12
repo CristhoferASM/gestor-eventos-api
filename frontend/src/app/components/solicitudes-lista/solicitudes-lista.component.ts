@@ -4,6 +4,7 @@ import {
   ESTADO_RETIRADA_CLIENTE,
   Evento,
   Solicitud,
+  formatearCodigoEvento,
   formatearCodigoSolicitud,
   formatearFechaHoraEnvio,
   obtenerResumenCambiosSolicitud,
@@ -84,7 +85,7 @@ import {
                   </td>
                   <td class="celda-evento">
                     <span class="evento-nombre">{{ obtenerNombreEventoSolicitud(sol) }}</span>
-                    <small class="subtexto-evento">Evento ID: {{ sol.evento_id }}</small>
+                    <small class="subtexto-evento">Evento {{ codigoEvento(sol.evento_id) }}</small>
                   </td>
                   <td class="celda-fecha-envio">
                     <span class="fecha-envio-texto">{{ formatearFechaHoraEnvio(sol.fecha_creacion) }}</span>
@@ -121,7 +122,7 @@ import {
 
               <h4 class="tarjeta-solicitud-movil__evento">
                 {{ obtenerNombreEventoSolicitud(sol) }}
-                <small>(Evento ID: {{ sol.evento_id }})</small>
+                <small>(Evento {{ codigoEvento(sol.evento_id) }})</small>
               </h4>
 
               <div class="tarjeta-solicitud-movil__meta">
@@ -404,6 +405,11 @@ export class SolicitudesListaComponent {
 
   obtenerResumenCambios(sol: Solicitud): string {
     return obtenerResumenCambiosSolicitud(sol, this.catalogoAdicionales);
+  }
+
+  /** «EV-0003» con la base de la empresa; «ID: 1» con datos en memoria. */
+  codigoEvento(eventoId: number): string {
+    return formatearCodigoEvento(eventoId, this.eventos);
   }
 
   obtenerNombreEventoSolicitud(sol: Solicitud): string {

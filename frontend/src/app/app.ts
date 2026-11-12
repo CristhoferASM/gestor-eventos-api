@@ -30,6 +30,7 @@ import {
   construirFilasComparativa,
   eventoAdmiteModificacion,
   formatSoles,
+  formatearCodigoEvento,
   formatearCodigoSolicitud,
   formatearFechaHoraEnvio,
   formatearFechaVisual,
@@ -63,6 +64,11 @@ export class App implements OnInit {
   private readonly api = inject(EventosApiService);
   readonly auth = inject(AuthService);
   readonly formatearCodigoSolicitud = formatearCodigoSolicitud;
+
+  /** Código visible del evento («EV-0003» con la base de la empresa; «ID: 1» con datos en memoria). */
+  codigoDelEvento(id: number | null | undefined): string {
+    return formatearCodigoEvento(id, this.eventos());
+  }
 
   /** Tarifas referenciales del prototipo (cliente.js: TARIFAS_REFERENCIALES). Sujetas a confirmación comercial. */
   readonly tarifasReferenciales = { cargoModificacion: 100, horaAuditorio: 500 } as const;

@@ -36,7 +36,7 @@ import { SelectorFechaHoraDirective } from '../../directives/selector-fecha-hora
         <h2 id="titulo-paso-2" tabindex="-1">2. Proponer cambios para el evento</h2>
         @if (eventoActual) {
           <div class="etiqueta et-evento-activo" id="badgeEventoClientePaso2">
-            ID: {{ eventoActual.id }} &bull; {{ formatearEstadoEvento(eventoActual.estado) }}
+            {{ eventoActual.codigo || 'ID: ' + eventoActual.id }} &bull; {{ formatearEstadoEvento(eventoActual.estado) }}
           </div>
         }
       </div>
