@@ -79,7 +79,7 @@ func TestConsultarDisponibilidadErroresYPermisos(t *testing.T) {
 		}
 	}
 	// El cliente dueño (evento 1) sí puede consultar; datos mal formados responden 400
-	propia := map[string]any{"evento_id": 1, "fecha_propuesta": "2026-11-16", "hora_inicio_propuesta": "09:00", "hora_fin_propuesta": "10:00"}
+	propia := map[string]any{"evento_id": 1, "fecha_propuesta": "2026-11-16", "hora_inicio_propuesta": "09:00", "hora_fin_propuesta": "10:00", "tiempos_tecnicos_propuestos": map[string]any{}}
 	if w := llamar(r, http.MethodPost, "/disponibilidad", tokCli001, propia); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"disponible":true`) {
 		t.Errorf("cliente dueño: esperaba 200 disponible, obtuvo %d: %s", w.Code, w.Body)
 	}

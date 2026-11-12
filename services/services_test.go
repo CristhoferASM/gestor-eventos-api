@@ -162,7 +162,7 @@ func TestSolicitudServiceRelojInyectadoYSnapshotsCompatibilidad(t *testing.T) {
 		Motivo:              "  Cambio por logística técnica  ",
 		FechaPropuesta:      " 2026-11-19 ",
 		HoraInicioPropuesta: " 06:00 ",
-		HoraFinPropuesta:    " 22:00 ",
+		HoraFinPropuesta:    " 22:00 ", TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 	})
 	if err != nil {
 		t.Fatalf("error inesperado al crear solicitud: %v", err)
@@ -497,7 +497,7 @@ func TestSolicitudServiceFormatoEstrictoHorasYLimites(t *testing.T) {
 				Motivo:              "Prueba de horario válido",
 				FechaPropuesta:      "2026-11-22",
 				HoraInicioPropuesta: tc.inicio,
-				HoraFinPropuesta:    tc.fin,
+				HoraFinPropuesta:    tc.fin, TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 			})
 			if err != nil {
 				t.Fatalf("se esperaba éxito para (%q, %q), pero falló con: %v", tc.inicio, tc.fin, err)
@@ -533,7 +533,7 @@ func TestSolicitudServiceFormatoEstrictoHorasYLimites(t *testing.T) {
 				Motivo:              "Prueba de horario inválido",
 				FechaPropuesta:      "2026-11-22",
 				HoraInicioPropuesta: tc.inicio,
-				HoraFinPropuesta:    tc.fin,
+				HoraFinPropuesta:    tc.fin, TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 			})
 			if !errors.Is(err, services.ErrDatosInvalidos) {
 				t.Fatalf("se esperaba ErrDatosInvalidos para (%q, %q), se obtuvo: %v", tc.inicio, tc.fin, err)
@@ -555,7 +555,7 @@ func TestSolicitudServiceMotivoUnicode400Y401(t *testing.T) {
 		Motivo:              motivo400Unicode,
 		FechaPropuesta:      "2026-11-22",
 		HoraInicioPropuesta: "10:00",
-		HoraFinPropuesta:    "12:00",
+		HoraFinPropuesta:    "12:00", TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 	})
 	if err != nil {
 		t.Fatalf("se esperaba aceptar 400 caracteres Unicode, pero se obtuvo error: %v", err)
@@ -571,7 +571,7 @@ func TestSolicitudServiceMotivoUnicode400Y401(t *testing.T) {
 		Motivo:              motivo401Unicode,
 		FechaPropuesta:      "2026-11-22",
 		HoraInicioPropuesta: "10:00",
-		HoraFinPropuesta:    "12:00",
+		HoraFinPropuesta:    "12:00", TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 	})
 	if !errors.Is(err, services.ErrDatosInvalidos) {
 		t.Fatalf("se esperaba ErrDatosInvalidos para 401 caracteres Unicode, se obtuvo: %v", err)
@@ -593,7 +593,7 @@ func TestSolicitudServiceFallosRepositorio(t *testing.T) {
 		Motivo:              "Motivo válido",
 		FechaPropuesta:      "2026-11-22",
 		HoraInicioPropuesta: "10:00",
-		HoraFinPropuesta:    "12:00",
+		HoraFinPropuesta:    "12:00", TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 	})
 	if !errors.Is(err, errDB) {
 		t.Fatalf("se esperaba propagación del error del repositorio, se obtuvo: %v", err)
@@ -624,7 +624,7 @@ func TestSolicitudServiceCreacionConcurrente(t *testing.T) {
 				Motivo:              "Solicitud concurrente",
 				FechaPropuesta:      "2026-11-25",
 				HoraInicioPropuesta: "10:00",
-				HoraFinPropuesta:    "12:00",
+				HoraFinPropuesta:    "12:00", TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 			})
 			if err == nil {
 				exitos <- creada
@@ -1065,7 +1065,7 @@ func TestRetirarSolicitudConcurrenteUnSoloExito(t *testing.T) {
 	cliente := models.Usuario{Correo: "c@prueba.test", Rol: models.RolCliente, ClienteID: "CLI-001"}
 
 	creada, err := svc.CrearSolicitud(context.Background(), models.SolicitudCreacionDTO{
-		EventoID: 1, Motivo: "prueba", FechaPropuesta: "2026-12-01", HoraInicioPropuesta: "10:00", HoraFinPropuesta: "12:00",
+		EventoID: 1, Motivo: "prueba", FechaPropuesta: "2026-12-01", HoraInicioPropuesta: "10:00", HoraFinPropuesta: "12:00", TiemposTecnicosPropuestos: &models.TiemposTecnicosPropuestosDTO{},
 	})
 	if err != nil {
 		t.Fatal(err)

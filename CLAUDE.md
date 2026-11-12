@@ -91,7 +91,7 @@ Aplican en el backend (`services`) y, duplicadas, en el formulario Angular:
 
 ## Advertencias y puntos por revisar
 
-- **Sincronización automática de tiempos técnicos (por revisar):** cuando la petición omite los tiempos técnicos, `SolicitudService` conserva las franjas del evento y las recalcula según la nueva fecha o los nuevos límites del evento (`services/solicitud_service.go`, rama `else` del paso 8; puede incluso desactivar una franja si no cabe). Esto puede mover horarios que el cliente no propuso explícitamente y debe revisarse con el usuario antes de cambiarlo o depender de ello.
+- **Tiempos técnicos cuando la petición no los envía:** se conservan TAL CUAL los del evento (`services/solicitud_service.go`, rama `else` del paso 8); nunca se mueve ni se desactiva un horario que nadie pidió mover. Si con la fecha u horario propuestos ya no encajan (otra fecha, el montaje terminaría después del nuevo inicio, el desmontaje empezaría antes del nuevo fin), responde 400 con un mensaje que explica qué envolver en `tiempos_tecnicos_propuestos`. El formulario de Angular siempre los envía, así que solo cambia lo que ve quien llama a la API directamente. (Antes se recalculaban solos y podían incluso desactivar una franja.)
 - El flujo de aprobación del asesor y la confirmación final del cliente **aún requieren aclaraciones del ingeniero**. No los des por implementados ni inventes sus reglas.
 - Los adicionales (recursos, cantidades, horas de uso, tarifas, subtotales) están implementados con un catálogo **simulado**; las reglas de cobro reales siguen sin confirmar, no asumas valores.
 

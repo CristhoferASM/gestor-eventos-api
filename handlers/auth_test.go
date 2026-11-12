@@ -221,7 +221,7 @@ func TestSolicitudesFiltradasYProtegidasPorCliente(t *testing.T) {
 	solicitud := func(eventoID uint, motivo string) gin.H {
 		return gin.H{
 			"evento_id": eventoID, "motivo": motivo,
-			"fecha_propuesta": "2026-12-01", "hora_inicio_propuesta": "10:00", "hora_fin_propuesta": "12:00",
+			"fecha_propuesta": "2026-12-01", "hora_inicio_propuesta": "10:00", "hora_fin_propuesta": "12:00", "tiempos_tecnicos_propuestos": gin.H{},
 		}
 	}
 
@@ -340,7 +340,7 @@ func TestRetirarSolicitud(t *testing.T) {
 	cuerpo := func(eventoID uint, motivo string) gin.H {
 		return gin.H{
 			"evento_id": eventoID, "motivo": motivo,
-			"fecha_propuesta": "2026-12-01", "hora_inicio_propuesta": "10:00", "hora_fin_propuesta": "12:00",
+			"fecha_propuesta": "2026-12-01", "hora_inicio_propuesta": "10:00", "hora_fin_propuesta": "12:00", "tiempos_tecnicos_propuestos": gin.H{},
 		}
 	}
 	// El cliente CLI-001 crea una solicitud sobre su evento 1; el asesor crea otra sobre el evento 2 (de CLI-002)

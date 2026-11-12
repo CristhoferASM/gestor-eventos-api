@@ -56,6 +56,7 @@ test.describe('Reglas avanzadas (atajo diario, vínculo de cuentas, disponibilid
       data: {
         evento_id: 1, motivo: 'Probar choque de horario',
         fecha_propuesta: '2026-11-20', hora_inicio_propuesta: '15:00', hora_fin_propuesta: '16:00',
+        tiempos_tecnicos_propuestos: {}, // sin franjas: el choque se comprueba sobre el horario principal
       },
     });
     expect(choque.status()).toBe(409);

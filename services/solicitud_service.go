@@ -306,63 +306,38 @@ func (s *SolicitudService) armarSolicitud(ctx context.Context, dto models.Solici
 			ensayoHoraFinProp = strings.TrimSpace(dto.EnsayoHoraFin)
 		}
 	} else {
-		// En peticiones compatibles que no envían tiempos técnicos, si el evento tiene franjas activas,
-		// sus fechas se sincronizan con la fecha propuesta y sus horarios se mantienen coherentes
-		// con el horario del evento (montaje finaliza al iniciar el evento y desmontaje inicia al concluir).
-		if hasMontajeProp {
-			montajeFechaProp = fechaLimpia
-			tMIniOrig, _, _ := parseHora(evento.MontajeHoraInicio)
-			tMFinOrig, _, _ := parseHora(evento.MontajeHoraFin)
-			duracion := tMFinOrig.Sub(tMIniOrig)
-			if duracion <= 0 {
-				duracion = time.Hour
+		// La petición no trae tiempos técnicos: se conservan TAL CUAL los del evento. No se mueve ni se desactiva ningún horario que
+		// nadie pidió mover. Si con la fecha u horario propuestos ya no encajan, se responde un error claro para que se envíen explícitos.
+		const ayuda = " Como la petición no incluye tiempos técnicos, no se modifican por su cuenta: envía «tiempos_tecnicos_propuestos» con los horarios nuevos (o desactiva esa franja)."
+		encaja := func(nombre string, activa bool, fecha, inicio, fin string, previaAlEvento bool) error {
+			if !activa {
+				return nil
 			}
-			nuevoFin := tInicio
-			nuevoInicio := nuevoFin.Add(-duracion)
-			if nuevoInicio.Before(limiteMin) {
-				if tInicio.After(limiteMin) {
-					nuevoInicio = limiteMin
-					montajeHoraInicioProp = fmt.Sprintf("%02d:%02d", nuevoInicio.Hour(), nuevoInicio.Minute())
-					montajeHoraFinProp = fmt.Sprintf("%02d:%02d", nuevoFin.Hour(), nuevoFin.Minute())
-				} else {
-					hasMontajeProp = false
-					montajeFechaProp = ""
-					montajeHoraInicioProp = ""
-					montajeHoraFinProp = ""
-				}
-			} else {
-				montajeHoraInicioProp = fmt.Sprintf("%02d:%02d", nuevoInicio.Hour(), nuevoInicio.Minute())
-				montajeHoraFinProp = fmt.Sprintf("%02d:%02d", nuevoFin.Hour(), nuevoFin.Minute())
+			descripcion := fmt.Sprintf("El %s programado el %s de %s a %s", nombre, fecha, inicio, fin)
+			if fecha != fechaLimpia {
+				return nuevoErrorValidacion(fmt.Sprintf("%s no está en la fecha del evento (%s), y los tiempos técnicos deben ser el mismo día del evento.%s", descripcion, fechaLimpia, ayuda))
 			}
+			tIni, _, errIni := parseHora(inicio)
+			tFinFranja, _, errFinFranja := parseHora(fin)
+			if errIni != nil || errFinFranja != nil {
+				return nil // horas ilegibles: las valida el paso siguiente con su propio mensaje
+			}
+			if previaAlEvento && tFinFranja.After(tInicio) {
+				return nuevoErrorValidacion(fmt.Sprintf("%s terminaría después del nuevo inicio del evento (%s).%s", descripcion, horaInicioNorm, ayuda))
+			}
+			if !previaAlEvento && tIni.Before(tFin) {
+				return nuevoErrorValidacion(fmt.Sprintf("%s empezaría antes del nuevo fin del evento (%s).%s", descripcion, horaFinNorm, ayuda))
+			}
+			return nil
 		}
-		if hasDesmontajeProp {
-			desmontajeFechaProp = fechaLimpia
-			tDIniOrig, _, _ := parseHora(evento.DesmontajeHoraInicio)
-			tDFinOrig, _, _ := parseHora(evento.DesmontajeHoraFin)
-			duracion := tDFinOrig.Sub(tDIniOrig)
-			if duracion <= 0 {
-				duracion = time.Hour
-			}
-			nuevoInicio := tFin
-			nuevoFin := nuevoInicio.Add(duracion)
-			if nuevoFin.After(limiteMax) {
-				if tFin.Before(limiteMax) {
-					nuevoFin = limiteMax
-					desmontajeHoraInicioProp = fmt.Sprintf("%02d:%02d", nuevoInicio.Hour(), nuevoInicio.Minute())
-					desmontajeHoraFinProp = fmt.Sprintf("%02d:%02d", nuevoFin.Hour(), nuevoFin.Minute())
-				} else {
-					hasDesmontajeProp = false
-					desmontajeFechaProp = ""
-					desmontajeHoraInicioProp = ""
-					desmontajeHoraFinProp = ""
-				}
-			} else {
-				desmontajeHoraInicioProp = fmt.Sprintf("%02d:%02d", nuevoInicio.Hour(), nuevoInicio.Minute())
-				desmontajeHoraFinProp = fmt.Sprintf("%02d:%02d", nuevoFin.Hour(), nuevoFin.Minute())
-			}
+		if err := encaja("montaje", hasMontajeProp, montajeFechaProp, montajeHoraInicioProp, montajeHoraFinProp, true); err != nil {
+			return models.Solicitud{}, err
 		}
-		if hasEnsayoProp {
-			ensayoFechaProp = fechaLimpia
+		if err := encaja("desmontaje", hasDesmontajeProp, desmontajeFechaProp, desmontajeHoraInicioProp, desmontajeHoraFinProp, false); err != nil {
+			return models.Solicitud{}, err
+		}
+		if err := encaja("ensayo técnico", hasEnsayoProp, ensayoFechaProp, ensayoHoraInicioProp, ensayoHoraFinProp, true); err != nil {
+			return models.Solicitud{}, err
 		}
 	}
 
