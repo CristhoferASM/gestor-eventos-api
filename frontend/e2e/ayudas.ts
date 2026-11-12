@@ -1,9 +1,20 @@
 import { Page, expect } from '@playwright/test';
 
+const CUENTAS_DEMO = {
+  cliente: { correo: 'cliente@horizonte.com', password: 'Cliente2026!' },
+  asesor: { correo: 'asesor@showtech.com', password: 'Asesor2026!' },
+};
+
+/** Escribe el correo y la contraseña de una cuenta demo del backend en memoria (el login ya no tiene botones de atajo). */
+export async function escribirCuenta(page: Page, cuenta: 'cliente' | 'asesor'): Promise<void> {
+  await page.getByLabel('Correo electrónico').fill(CUENTAS_DEMO[cuenta].correo);
+  await page.getByLabel('Contraseña', { exact: true }).fill(CUENTAS_DEMO[cuenta].password);
+}
+
 /** Entra con una cuenta demo: correo y contraseña, y luego el código de prueba que muestra la pantalla. */
 export async function iniciarSesion(page: Page, cuenta: 'cliente' | 'asesor'): Promise<void> {
   await page.goto('/');
-  await page.getByRole('button', { name: cuenta === 'cliente' ? 'Cliente' : 'Asesor', exact: true }).click();
+  await escribirCuenta(page, cuenta);
   await page.getByRole('button', { name: 'Ingresar' }).click();
 
   await expect(page.getByRole('heading', { name: 'Revisa tu correo' })).toBeVisible();

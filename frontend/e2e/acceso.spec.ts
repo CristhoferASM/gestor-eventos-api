@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { almacenamiento, cerrarSesion, iniciarSesion } from './ayudas';
+import { almacenamiento, cerrarSesion, escribirCuenta, iniciarSesion } from './ayudas';
 
 test.describe('Acceso y sesión', () => {
   test('el cliente entra en dos pasos y la sesión vive en una cookie HttpOnly', async ({ page, context }) => {
@@ -44,7 +44,7 @@ test.describe('Acceso y sesión', () => {
 
   test('un código incorrecto se rechaza y se puede corregir', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Cliente', exact: true }).click();
+    await escribirCuenta(page, 'cliente');
     await page.getByRole('button', { name: 'Ingresar' }).click();
     await expect(page.getByRole('heading', { name: 'Revisa tu correo' })).toBeVisible();
 

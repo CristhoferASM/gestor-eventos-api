@@ -15,6 +15,8 @@ var (
 
 	// ErrSolicitudPendienteDuplicada reexporta el error de repositorio cuando ya existe una solicitud pendiente (HTTP 409).
 	ErrSolicitudPendienteDuplicada = repositories.ErrSolicitudPendienteDuplicada
+	// ErrSolicitanteNoRegistrado reexporta el error de repositorio cuando la cuenta no existe en la base de la empresa (HTTP 403).
+	ErrSolicitanteNoRegistrado = repositories.ErrSolicitanteNoRegistrado
 )
 
 // ErrorValidacion encapsula un mensaje de validación legible conservando la identificación mediante errors.Is y errors.As.

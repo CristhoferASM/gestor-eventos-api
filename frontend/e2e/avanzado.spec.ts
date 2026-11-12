@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cerrarSesion, iniciarSesion } from './ayudas';
+import { cerrarSesion, escribirCuenta, iniciarSesion } from './ayudas';
 
 test.describe('Reglas avanzadas (atajo diario, vínculo de cuentas, disponibilidad y CORS)', () => {
   test('el asesor verifica el código una sola vez al día en el mismo navegador, pero la contraseña se pide siempre', async ({ page }) => {
@@ -8,7 +8,7 @@ test.describe('Reglas avanzadas (atajo diario, vínculo de cuentas, disponibilid
     await expect(page.getByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
 
     // Segundo ingreso: con la contraseña basta, no aparece «Revisa tu correo»
-    await page.getByRole('button', { name: 'Asesor', exact: true }).click();
+    await escribirCuenta(page, 'asesor');
     await page.getByRole('button', { name: 'Ingresar' }).click();
     await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Revisa tu correo' })).toHaveCount(0);
@@ -27,7 +27,7 @@ test.describe('Reglas avanzadas (atajo diario, vínculo de cuentas, disponibilid
     await cerrarSesion(page);
     await expect(page.getByRole('heading', { name: 'Iniciar sesión' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Cliente', exact: true }).click();
+    await escribirCuenta(page, 'cliente');
     await page.getByRole('button', { name: 'Ingresar' }).click();
     await expect(page.getByRole('heading', { name: 'Revisa tu correo' })).toBeVisible();
     await expect(page.getByText('una vez al día')).toHaveCount(0);

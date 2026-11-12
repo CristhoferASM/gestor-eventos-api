@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -35,6 +36,10 @@ func CrearSolicitudHandler(solicitudService *services.SolicitudService) gin.Hand
 				c.JSON(http.StatusForbidden, gin.H{
 					"error": "Solo el cliente dueño del evento puede enviar una solicitud de modificación. El asesor aplica los cambios directamente.",
 				})
+			case errors.Is(err, services.ErrSolicitanteNoRegistrado):
+				c.JSON(http.StatusForbidden, gin.H{
+					"error": "Tu cuenta aún no está registrada como usuario en el sistema de la empresa, por lo que no puede enviar solicitudes. Pide al equipo comercial que la registre.",
+				})
 			case errors.Is(err, services.ErrEventoNoEncontrado):
 				c.JSON(http.StatusNotFound, gin.H{
 					"error": fmt.Sprintf("El evento con ID %d no existe.", dto.EventoID),
@@ -48,6 +53,7 @@ func CrearSolicitudHandler(solicitudService *services.SolicitudService) gin.Hand
 					"error": "Ya existe una solicitud pendiente de revisión para este evento.",
 				})
 			default:
+				log.Printf("Error interno al crear la solicitud (evento %d): %v", dto.EventoID, err)
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": "Error interno del servidor.",
 				})
@@ -88,6 +94,7 @@ func ConsultarDisponibilidadHandler(solicitudService *services.SolicitudService)
 		case errors.Is(err, services.ErrEventoNoEncontrado):
 			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("El evento con ID %d no existe.", dto.EventoID)})
 		default:
+			log.Printf("Error interno al consultar la disponibilidad (evento %d): %v", dto.EventoID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error interno del servidor."})
 		}
 	}
@@ -128,6 +135,7 @@ func RetirarSolicitudHandler(solicitudService *services.SolicitudService) gin.Ha
 			case errors.Is(err, services.ErrSolicitudNoPendiente):
 				c.JSON(http.StatusConflict, gin.H{"error": "Solo es posible retirar solicitudes que sigan pendientes de revisión."})
 			default:
+				log.Printf("Error interno al retirar la solicitud %d: %v", id, err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error interno del servidor."})
 			}
 			return

@@ -332,7 +332,7 @@ const (
 // simultáneas. El código (SOLM-AAAA-NNNN) se calcula aquí; si dos peticiones eligen el mismo número, se reintenta.
 func (s *EmpresaStore) CrearSolicitud(ctx context.Context, sol models.Solicitud) (models.Solicitud, error) {
 	if sol.SolicitanteID == 0 {
-		return models.Solicitud{}, errors.New("no se indicó el usuario que envía la solicitud")
+		return models.Solicitud{}, repositories.ErrSolicitanteNoRegistrado
 	}
 	const maxIntentos = 5
 	for intento := 0; intento < maxIntentos; intento++ {

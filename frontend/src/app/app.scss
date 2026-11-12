@@ -672,8 +672,12 @@
     border-bottom: 1px solid var(--borde);
   }
 
-  tr.fila-adicional-modificada {
-    background: #fffcf4;
+  tr.fila-adicional-modificada td {
+    background: #fff3cd;
+  }
+
+  tr.fila-adicional-modificada td:first-child {
+    box-shadow: inset 5px 0 0 #d99a00;
   }
 }
 

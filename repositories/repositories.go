@@ -19,6 +19,9 @@ var (
 
 	// ErrSolicitudPendienteDuplicada indica que el evento ya tiene una solicitud en estado pendiente de revisión.
 	ErrSolicitudPendienteDuplicada = errors.New("ya existe una solicitud pendiente de revisión para este evento")
+	// ErrSolicitanteNoRegistrado indica que quien envía la solicitud no existe como usuario en la base de datos de la empresa
+	// (por ejemplo, una cuenta de Google, que por ahora solo vive en memoria).
+	ErrSolicitanteNoRegistrado = errors.New("la cuenta no está registrada como usuario en la base de datos de la empresa")
 )
 
 // EventoRepository define las operaciones de consulta de eventos.

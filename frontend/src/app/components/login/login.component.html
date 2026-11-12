@@ -50,15 +50,6 @@
         <h1 class="titulo-card" id="tituloLogin">Iniciar sesión</h1>
         <p class="subtitulo-card">Accede a tu cuenta para gestionar tus eventos</p>
 
-        <!-- Atajo rápido de cuentas demo -->
-        <div class="barra-cuentas-demo">
-          <span>Cuentas demo:</span>
-          <div style="display: flex; gap: 6px;">
-            <button type="button" class="btn-pill-cuenta" (click)="usarCuentaDemo('asesor')" title="Cargar credenciales del Asesor comercial">Asesor</button>
-            <button type="button" class="btn-pill-cuenta" (click)="usarCuentaDemo('cliente')" title="Cargar credenciales del Cliente">Cliente</button>
-          </div>
-        </div>
-
         <!-- Formulario de login -->
         <form class="formulario-acceso" (submit)="enviarLogin($event)" novalidate>
           <!-- Campo: Correo electrónico -->

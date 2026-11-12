@@ -827,12 +827,22 @@
   }
 
   tr.fila-modificada td {
-    background: #fffdf5;
+    background: #fff3cd;
+  }
+
+  tr.fila-modificada td.col-campo {
+    box-shadow: inset 5px 0 0 #d99a00;
+  }
+
+  tr.fila-modificada td.col-actual {
+    color: #5b6676;
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
   }
 
   tr.fila-modificada td.col-propuesto {
     font-weight: 700;
-    color: var(--primario-2, #1f4e9c);
+    color: var(--primario, #13264a);
   }
 }
 

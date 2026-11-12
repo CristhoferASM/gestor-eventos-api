@@ -339,15 +339,30 @@ select {
   width: 36%;
 }
 
+/* Filas cambiadas: fondo ámbar, barra lateral, valor nuevo en negrita y el anterior tachado.
+   Las filas sin cambio se atenúan (solo si hay alguna cambiada) para que el cambio se vea de un vistazo. */
+.comparativo-tabla tr.fila-modificada td {
+  background: #fff3cd;
+}
+
+.comparativo-tabla tr.fila-modificada td.col-campo {
+  box-shadow: inset 5px 0 0 #d99a00;
+}
+
 .comparativo-tabla tr.fila-modificada td.col-actual {
-  background: #fefefe;
-  color: #64748b;
+  color: #5b6676;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
 }
 
 .comparativo-tabla tr.fila-modificada td.col-propuesto {
-  background: #fffdf5;
-  font-weight: bold;
-  color: var(--primario);
+  font-weight: 700;
+  color: #13264a;
+}
+
+.comparativo-tabla:has(tr.fila-modificada) tr:not(.fila-modificada) td.col-actual,
+.comparativo-tabla:has(tr.fila-modificada) tr:not(.fila-modificada) td.col-propuesto {
+  color: var(--gris);
 }
 
 .motivo-box-review {

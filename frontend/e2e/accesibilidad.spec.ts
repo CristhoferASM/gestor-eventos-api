@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { Page, expect, test } from '@playwright/test';
-import { iniciarSesion } from './ayudas';
+import { escribirCuenta, iniciarSesion } from './ayudas';
 
 /** Reglas WCAG 2.0/2.1 A y AA. Devuelve un resumen legible de las violaciones encontradas. */
 async function auditar(page: Page): Promise<string[]> {
@@ -19,7 +19,7 @@ test.describe('Accesibilidad (axe-core, WCAG 2.1 A y AA)', () => {
 
   test('pantalla de verificación del código', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Cliente', exact: true }).click();
+    await escribirCuenta(page, 'cliente');
     await page.getByRole('button', { name: 'Ingresar' }).click();
     await expect(page.getByRole('heading', { name: 'Revisa tu correo' })).toBeVisible();
     expect(await auditar(page)).toEqual([]);
@@ -59,7 +59,7 @@ test.describe('Móvil (390 px de ancho)', () => {
   test('login y verificación sin desborde horizontal', async ({ page }) => {
     await page.goto('/');
     await sinDesborde(page);
-    await page.getByRole('button', { name: 'Cliente', exact: true }).click();
+    await escribirCuenta(page, 'cliente');
     await page.getByRole('button', { name: 'Ingresar' }).click();
     await expect(page.getByRole('heading', { name: 'Revisa tu correo' })).toBeVisible();
     await sinDesborde(page);
